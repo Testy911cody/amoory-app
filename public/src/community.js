@@ -3,6 +3,7 @@
 
 import { getSupabase, SUPABASE_READY, AUDIO_BUCKET, getCurrentUser } from "./supabase.js";
 import { openTalkBoardDB } from "./idb.js";
+import { moderateForCommunity, logModerationRejection } from "./moderation.js";
 
 const QUEUE_KEY = "talkboard_community_queue";
 const REMOTE_CACHE_KEY = "talkboard_community_remote";
@@ -131,13 +132,20 @@ export async function getCommunityAudio(id) {
 }
 
 /** Submit a new community word (starts as pending).
+   Runs client-side moderation first — rejected words never enter the queue.
    When `shareOnline` is set and Supabase is configured + the contributor is
-   signed in, the word + audio are also pushed to the shared online library.
-   Everything is always saved locally first, so submitting never fails. */
+   signed in, the word + audio are also pushed to the shared online library. */
 export async function submitWord({ text, category, emoji, locale, dialect, audioBlob, shareOnline }) {
+  const trimmed = String(text).trim();
+  const mod = moderateForCommunity(trimmed, locale);
+  if (!mod.ok) {
+    logModerationRejection(trimmed, locale, mod.reason);
+    return { rejected: true, reason: mod.reason };
+  }
+
   const entry = {
     id: `cw_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-    text: String(text).trim(),
+    text: trimmed,
     category,
     emoji: emoji || "💬",
     locale,
@@ -157,7 +165,7 @@ export async function submitWord({ text, category, emoji, locale, dialect, audio
   if (shareOnline && SUPABASE_READY) {
     try { await syncShareQueue(); } catch { /* retried later */ }
   }
-  return entry;
+  return { entry, rejected: false };
 }
 
 /** Upload one queued entry to Supabase Storage + community_words table. */

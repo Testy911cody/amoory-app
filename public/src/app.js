@@ -32,6 +32,7 @@ import {
   recordWordUse, getUniqueWordCount, setManualTier, resetUsageStats, getUsageStore,
   setCardOrderForView
 } from "./usage.js";
+import { moderateWordEntry, logModerationRejection } from "./moderation.js";
 
 /* ---------------- Toast ---------------- */
 function toast(msg) {
@@ -58,7 +59,7 @@ function playBlob(blob) {
 
 let authUser = null;
 let pendingRecordAfterAuth = null;
-let recordingAuthToastShown = false;
+let pendingCommunityShareAfterAuth = null;
 let mediaRec = null, recChunks = [], recStream = null, recTimer = null, recStart = 0;
 let recordingWord = null, recordingCard = null;
 
@@ -137,7 +138,7 @@ function resetRecordAuthPanel() {
   if (form) form.hidden = false;
 }
 
-function openRecordAuthPanel() {
+function openRecordAuthPanel({ forCommunity = false } = {}) {
   const panel = document.getElementById("recordAuthPanel");
   if (!panel) return;
   if (!SUPABASE_READY) {
@@ -148,11 +149,13 @@ function openRecordAuthPanel() {
   closePanel(el.settingsPanel);
   closePanel(el.contributePanel);
   resetRecordAuthPanel();
-  document.getElementById("recordAuthHint").textContent = t("recordNeedsAccount");
-  document.getElementById("recordAuthTitle").textContent = t("account");
+  document.getElementById("recordAuthHint").textContent = forCommunity
+    ? t("signInForCommunity")
+    : t("recordNeedsAccount");
+  document.getElementById("recordAuthTitle").textContent = forCommunity ? t("contribute") : t("account");
   document.getElementById("recordAuthUsernameLbl").textContent = t("accountUsername");
   document.getElementById("recordAuthPasswordLbl").textContent = t("accountPassword");
-  document.getElementById("recordAuthShareLbl").textContent = t("shareWithCommunity");
+  document.getElementById("recordAuthShareLbl").textContent = t("shareWithCommunityHint");
   document.getElementById("recordAuthSignInBtn").textContent = t("accountSignIn");
   document.getElementById("recordAuthSignUpBtn").textContent = t("accountSignUp");
   const userInput = document.getElementById("recordAuthUsername");
@@ -164,8 +167,10 @@ function openRecordAuthPanel() {
 }
 
 async function shareRecordingWithCommunity(word, blob) {
-  if (!word || !blob?.size) return;
-  await submitWord({
+  if (!word || !blob?.size) return { skipped: true };
+  const user = authUser || await getCurrentUser();
+  if (!user) return { needsAuth: true };
+  return submitWord({
     text: labelForWord(word, settings.locale, state.dialect),
     category: word.categoryId || state.category,
     emoji: word.emoji || "💬",
@@ -176,21 +181,62 @@ async function shareRecordingWithCommunity(word, blob) {
   });
 }
 
-async function startRecording(word, cardEl) {
-  let user = authUser;
-  if (!user) {
-    user = await getCurrentUser();
-    authUser = user;
+async function finishRecordingSave(w, blob, card) {
+  const shareWithCommunity = readShareWithCommunity();
+  await savePersonalRecording(w.id, settings.locale, state.dialect, blob, authUser, { shareWithCommunity });
+
+  card?.classList.add("has-rec");
+  if (card && !card.querySelector(".reciic")) {
+    const tick = document.createElement("span");
+    tick.className = "reciic"; tick.textContent = "🎙️"; card.appendChild(tick);
   }
-  if (!user) {
-    pendingRecordAfterAuth = { word, cardEl };
-    openRecordAuthPanel();
+  await playBlob(blob);
+  renderPersonalList();
+
+  if (!shareWithCommunity) {
+    toast(t("savedVoice"));
     return;
   }
-  if (!recordingAuthToastShown) {
-    recordingAuthToastShown = true;
-    toast(`${t("signedInAs")} ${displayUsername(user)}`);
+
+  const user = authUser || await getCurrentUser();
+  if (!user) {
+    pendingCommunityShareAfterAuth = { word: w, blob };
+    openRecordAuthPanel({ forCommunity: true });
+    toast(t("savedLocalOnly"));
+    return;
   }
+
+  authUser = user;
+  const result = await shareRecordingWithCommunity(w, blob);
+  if (result?.rejected) {
+    toast(t("communityRejected"));
+    return;
+  }
+  if (result?.entry) {
+    toast(t("communitySubmitted"));
+    renderPendingQueue();
+  }
+}
+
+async function submitCommunityWord(payload) {
+  const { text, englishHint, locale, shareOnline, ...rest } = payload;
+  const mod = moderateWordEntry(text, englishHint, locale || settings.locale);
+  if (!mod.ok) {
+    logModerationRejection(text, locale, mod.reason);
+    return { rejected: true };
+  }
+  const user = authUser || await getCurrentUser();
+  if (!user) return { needsAuth: true };
+  authUser = user;
+  return submitWord({
+    text,
+    locale: locale || settings.locale,
+    shareOnline: !!shareOnline,
+    ...rest
+  });
+}
+
+async function startRecording(word, cardEl) {
   if (mediaRec?.state === "recording") { mediaRec.stop(); return; }
   if (!navigator.mediaDevices?.getUserMedia) {
     toast(t("micBlocked") || "This device can't record audio."); return;
@@ -218,19 +264,7 @@ async function startRecording(word, cardEl) {
 
     if (blob.size > 0 && w) {
       try {
-        const shareWithCommunity = readShareWithCommunity();
-        await savePersonalRecording(w.id, settings.locale, state.dialect, blob, authUser, { shareWithCommunity });
-        if (shareWithCommunity) {
-          await shareRecordingWithCommunity(w, blob);
-        }
-        card?.classList.add("has-rec");
-        if (card && !card.querySelector(".reciic")) {
-          const tick = document.createElement("span");
-          tick.className = "reciic"; tick.textContent = "🎙️"; card.appendChild(tick);
-        }
-        await playBlob(blob);
-        toast(t("savedVoice"));
-        renderPersonalList();
+        await finishRecordingSave(w, blob, card);
       } catch (err) {
         console.warn("savePersonalRecording failed:", err);
         toast(t("uploadFailed"));
@@ -333,7 +367,7 @@ function updateCaregiverAuthLabels() {
     caregiverSignInBtn: "accountSignIn",
     caregiverSignUpBtn: "accountSignUp",
     caregiverSignOutBtn: "signOut",
-    caregiverShareLbl: "shareWithCommunity"
+    caregiverShareLbl: "shareWithCommunityHint"
   };
   for (const [id, key] of Object.entries(map)) {
     const el = document.getElementById(id);
@@ -343,6 +377,10 @@ function updateCaregiverAuthLabels() {
   if (userInput) userInput.placeholder = t("accountUsernamePlaceholder");
   const shareBox = document.getElementById("caregiverShareCommunity");
   if (shareBox) shareBox.checked = settings.shareWithCommunity !== false;
+  const shareOnlineLbl = document.getElementById("shareOnlineLbl");
+  if (shareOnlineLbl) shareOnlineLbl.textContent = t("shareWithCommunityHint");
+  const customWordShareLbl = document.getElementById("customWordShareLbl");
+  if (customWordShareLbl) customWordShareLbl.textContent = t("shareWithCommunityHint");
 }
 
 function renderLangIndicator() {
@@ -936,17 +974,30 @@ document.getElementById("contribForm").onsubmit = async e => {
   const category = document.getElementById("contribCategory").value;
   const emoji = document.getElementById("contribEmoji").value.trim();
   if (!text) return;
-  const shareOnline = document.getElementById("contribShareOnline")?.checked || false;
-  await submitWord({
+  const shareOnline = document.getElementById("contribShareOnline")?.checked !== false;
+  if (!shareOnline) {
+    toast(t("shareWithCommunityHint"));
+    return;
+  }
+  const result = await submitCommunityWord({
     text,
     category,
     emoji: emoji || "💬",
     locale: settings.locale,
     dialect: state.dialect,
     audioBlob: contribBlob,
-    shareOnline
+    shareOnline: true
   });
-  toast(t("communityAdded"));
+  if (result?.needsAuth) {
+    toast(t("signInForCommunity"));
+    document.getElementById("contribEmail")?.focus();
+    return;
+  }
+  if (result?.rejected) {
+    toast(t("communityRejected"));
+    return;
+  }
+  toast(t("communitySubmitted"));
   document.getElementById("contribForm").reset();
   const contribShare = document.getElementById("contribShareOnline");
   if (contribShare) contribShare.checked = true;
@@ -1012,6 +1063,18 @@ function setupRecordAuth() {
     if (pending?.word) {
       toast(mode === "signup" ? t("signUpSuccess") : `${t("signedInAs")} ${displayUsername(authUser)}`);
       await startRecording(pending.word, pending.cardEl);
+      return;
+    }
+    const pendingShare = pendingCommunityShareAfterAuth;
+    pendingCommunityShareAfterAuth = null;
+    if (pendingShare?.word) {
+      toast(mode === "signup" ? t("signUpSuccess") : `${t("signedInAs")} ${displayUsername(authUser)}`);
+      const result = await shareRecordingWithCommunity(pendingShare.word, pendingShare.blob);
+      if (result?.rejected) toast(t("communityRejected"));
+      else if (result?.entry) {
+        toast(t("communitySubmitted"));
+        renderPendingQueue();
+      }
     }
   }
 
@@ -1056,6 +1119,7 @@ function setupRecordAuth() {
   signUpBtn?.addEventListener("click", () => tryAuth("signup"));
   document.getElementById("recordAuthClose")?.addEventListener("click", () => {
     pendingRecordAfterAuth = null;
+    pendingCommunityShareAfterAuth = null;
     closePanel(panel);
   });
 }
@@ -1245,7 +1309,16 @@ function setupCustomWordForm() {
     const hint = document.getElementById("customWordHint")?.value.trim();
     const emoji = document.getElementById("customWordEmoji")?.value.trim();
     const category = document.getElementById("customWordCategory")?.value || "social";
+    const shareCommunity = document.getElementById("customWordShareCommunity")?.checked !== false;
     if (!label) return;
+
+    const mod = moderateWordEntry(label, hint, settings.locale);
+    if (shareCommunity && !mod.ok) {
+      logModerationRejection(label, settings.locale, mod.reason);
+      toast(t("communityRejected"));
+      return;
+    }
+
     await addCustomWord({
       label,
       englishHint: hint || null,
@@ -1255,15 +1328,44 @@ function setupCustomWordForm() {
       dialect: state.dialect,
       audioBlob: customBlob
     }, authUser);
+
+    if (shareCommunity) {
+      const user = authUser || await getCurrentUser();
+      if (!user) {
+        toast(t("savedLocalOnly"));
+        toast(t("signInForCommunity"));
+        openPanel(el.settingsPanel);
+        return;
+      }
+      authUser = user;
+      const result = await submitWord({
+        text: label,
+        category,
+        emoji: emoji || "💬",
+        locale: settings.locale,
+        dialect: state.dialect,
+        audioBlob: customBlob,
+        shareOnline: true
+      });
+      if (result?.rejected) toast(t("communityRejected"));
+      else if (result?.entry) {
+        toast(t("communitySubmitted"));
+        renderPendingQueue();
+      }
+    } else {
+      toast(t("savedVoice"));
+    }
+
     form.reset();
     customBlob = null;
+    const shareBox = document.getElementById("customWordShareCommunity");
+    if (shareBox) shareBox.checked = true;
     if (recBtn) {
       recBtn.textContent = t("recordHint");
       recBtn.classList.remove("recording", "recorded");
     }
     renderBoard();
     renderCustomWordsList();
-    toast(t("savedVoice"));
   });
 
   const catSel = document.getElementById("customWordCategory");

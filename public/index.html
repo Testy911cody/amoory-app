@@ -145,7 +145,7 @@
             </label>
             <label class="field check">
               <input type="checkbox" id="caregiverShareCommunity" checked>
-              <span id="caregiverShareLbl">Share with community</span>
+              <span id="caregiverShareLbl">Contribute free words to the community dialect library</span>
             </label>
             <div class="row auth-actions">
               <button type="button" class="btn-primary" id="caregiverSignInBtn">Sign in</button>
@@ -181,6 +181,10 @@
           <label class="field">
             <span>Category</span>
             <select id="customWordCategory"></select>
+          </label>
+          <label class="field check">
+            <input type="checkbox" id="customWordShareCommunity" checked>
+            <span id="customWordShareLbl">Share with community</span>
           </label>
           <div class="field">
             <span>Record your voice</span>
@@ -261,7 +265,7 @@
         <!-- Online sharing (only shown when Supabase is configured) -->
         <div class="field check" id="shareOnlineField" hidden>
           <input type="checkbox" id="contribShareOnline" checked>
-          <span id="shareOnlineLbl">Share with the community online</span>
+          <span id="shareOnlineLbl">Contribute free words to the community dialect library</span>
         </div>
         <div class="contrib-auth" id="contribAuth" hidden>
           <p class="muted" id="authStatus">Sign in to share recordings with everyone.</p>
@@ -281,7 +285,7 @@
     </div>
   </div>
 
-  <!-- Recording auth gate (caregiver must sign in to record) -->
+  <!-- Auth panel for community contribution after recording -->
   <div class="panel panel-auth" id="recordAuthPanel" hidden aria-hidden="true">
     <div class="panel-inner">
       <div class="panel-head">
@@ -303,7 +307,7 @@
           </label>
           <label class="field check">
             <input type="checkbox" id="recordAuthShareCommunity" checked>
-            <span id="recordAuthShareLbl">Share with community</span>
+            <span id="recordAuthShareLbl">Contribute free words to the community dialect library</span>
           </label>
           <div class="row auth-actions">
             <button type="button" class="btn-primary" id="recordAuthSignInBtn">Sign in</button>
