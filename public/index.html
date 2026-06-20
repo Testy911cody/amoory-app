@@ -130,13 +130,14 @@
         </label>
 
         <hr class="caregiver-only" id="caregiverAuthHr" hidden>
-        <div class="caregiver-only contrib-auth" id="caregiverAuth" hidden>
+        <div class="caregiver-only contrib-auth auth-panel" id="caregiverAuth" hidden>
           <h3 id="caregiverAccountLbl">Your account</h3>
-          <p class="muted" id="caregiverAuthStatus">Sign in to save personal recordings in the cloud.</p>
-          <div id="caregiverSignInForm">
+          <p class="auth-status muted" id="caregiverAuthStatus">Sign in to save personal recordings in the cloud.</p>
+          <p class="auth-error" id="caregiverAuthError" hidden role="alert"></p>
+          <div id="caregiverSignInForm" class="auth-form">
             <label class="field">
               <span id="caregiverUsernameLbl">Username</span>
-              <input type="text" id="caregiverUsername" autocomplete="username" placeholder="your_name" minlength="3" pattern="[a-zA-Z0-9_]+">
+              <input type="text" id="caregiverUsername" autocomplete="username" placeholder="your_name" minlength="3" pattern="[a-zA-Z0-9_]+" autocapitalize="off" spellcheck="false">
             </label>
             <label class="field">
               <span id="caregiverPasswordLbl">Password</span>
@@ -146,12 +147,13 @@
               <input type="checkbox" id="caregiverShareCommunity" checked>
               <span id="caregiverShareLbl">Share with community</span>
             </label>
-            <div class="row">
+            <div class="row auth-actions">
               <button type="button" class="btn-primary" id="caregiverSignInBtn">Sign in</button>
               <button type="button" class="btn-secondary" id="caregiverSignUpBtn">Create account</button>
             </div>
           </div>
-          <div id="caregiverSignedIn" hidden>
+          <div id="caregiverSignedIn" class="auth-signed-in" hidden>
+            <p class="auth-status ok" id="caregiverSignedInAs"></p>
             <button type="button" class="btn-secondary" id="caregiverSignOutBtn">Sign out</button>
           </div>
         </div>
@@ -280,7 +282,7 @@
   </div>
 
   <!-- Recording auth gate (caregiver must sign in to record) -->
-  <div class="panel" id="recordAuthPanel" hidden aria-hidden="true">
+  <div class="panel panel-auth" id="recordAuthPanel" hidden aria-hidden="true">
     <div class="panel-inner">
       <div class="panel-head">
         <h2 id="recordAuthTitle">Save your recordings</h2>
@@ -288,21 +290,25 @@
       </div>
       <div class="panel-body">
         <p class="muted" id="recordAuthHint">Create an account to save your voice recordings.</p>
-        <label class="field">
-          <span id="recordAuthUsernameLbl">Username</span>
-          <input type="text" id="recordAuthUsername" autocomplete="username" placeholder="your_name" minlength="3" pattern="[a-zA-Z0-9_]+">
-        </label>
-        <label class="field">
-          <span id="recordAuthPasswordLbl">Password</span>
-          <input type="password" id="recordAuthPassword" autocomplete="current-password" minlength="6">
-        </label>
-        <label class="field check">
-          <input type="checkbox" id="recordAuthShareCommunity" checked>
-          <span id="recordAuthShareLbl">Share with community</span>
-        </label>
-        <div class="row">
-          <button type="button" class="btn-primary" id="recordAuthSignInBtn">Sign in</button>
-          <button type="button" class="btn-secondary" id="recordAuthSignUpBtn">Create account</button>
+        <p class="auth-error" id="recordAuthError" hidden role="alert"></p>
+        <p class="auth-status ok" id="recordAuthSignedIn" hidden></p>
+        <div id="recordAuthForm" class="auth-form">
+          <label class="field">
+            <span id="recordAuthUsernameLbl">Username</span>
+            <input type="text" id="recordAuthUsername" autocomplete="username" placeholder="your_name" minlength="3" pattern="[a-zA-Z0-9_]+" autocapitalize="off" spellcheck="false">
+          </label>
+          <label class="field">
+            <span id="recordAuthPasswordLbl">Password</span>
+            <input type="password" id="recordAuthPassword" autocomplete="current-password" minlength="6">
+          </label>
+          <label class="field check">
+            <input type="checkbox" id="recordAuthShareCommunity" checked>
+            <span id="recordAuthShareLbl">Share with community</span>
+          </label>
+          <div class="row auth-actions">
+            <button type="button" class="btn-primary" id="recordAuthSignInBtn">Sign in</button>
+            <button type="button" class="btn-secondary" id="recordAuthSignUpBtn">Create account</button>
+          </div>
         </div>
       </div>
     </div>

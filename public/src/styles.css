@@ -165,6 +165,26 @@ body[dir="rtl"] .word .src-badge{left:auto;right:8px;}
 .contrib-auth .row{margin-top:6px;}
 .contrib-auth input{flex:1;border:2px solid var(--line);border-radius:12px;padding:10px 12px;font-size:15px;font-weight:600;color:var(--ink);background:#fff;}
 
+/* caregiver / recording auth */
+.panel-auth{align-items:center;padding:16px;}
+.panel-auth .panel-inner{border-radius:20px;max-height:min(88dvh,640px);}
+.auth-panel{padding:14px;}
+.auth-form{display:flex;flex-direction:column;gap:0;}
+.auth-actions{margin-top:4px;}
+.auth-actions .btn-primary,.auth-actions .btn-secondary{flex:1;min-height:44px;font-size:15px;}
+.auth-actions .btn-primary:disabled,.auth-actions .btn-secondary:disabled{opacity:.55;cursor:wait;}
+.auth-error{background:#FCEAE7;border:1px solid #E8B4AD;border-radius:12px;padding:10px 12px;
+  margin:0 0 12px;font-size:13px;font-weight:700;color:#9E3D2E;line-height:1.4;}
+.auth-error[hidden]{display:none;}
+.auth-status.ok{background:#E8F5F0;border:1px solid #B8DDD0;border-radius:12px;padding:10px 12px;
+  margin:0 0 12px;font-size:14px;font-weight:800;color:var(--accent);}
+.auth-status.ok[hidden]{display:none;}
+.field input:invalid:not(:placeholder-shown),.field input.field-invalid{border-color:#D9695A;}
+.auth-signed-in{display:flex;flex-direction:column;gap:10px;}
+@media (min-width:480px){
+  .panel-auth .panel-inner{max-width:420px;}
+}
+
 /* quiet inline link (settings footer) */
 .link-quiet{color:var(--accent);font-weight:700;text-decoration:none;}
 .link-quiet:hover{text-decoration:underline;}

@@ -89,8 +89,20 @@ function friendlyAuthError(message) {
   const m = (message || "").toLowerCase();
   if (m.includes("invalid login credentials")) return "Wrong username or password.";
   if (m.includes("user already registered")) return "That username is already taken.";
-  if (m.includes("email not confirmed")) return "Account needs confirmation — try signing in again.";
+  if (m.includes("email not confirmed")) {
+    return "Account is not active yet. Ask the administrator to disable email confirmation in Supabase.";
+  }
+  if (m.includes("rate limit")) return "Too many attempts — wait a minute and try again.";
+  if (m.includes("signup is disabled")) return "Account sign-up is disabled on the server.";
   return message || "Something went wrong.";
+}
+
+/** Resolve an active session user after sign-up or sign-in. */
+async function resolveSessionUser(supabase, fallbackUser) {
+  const { data: sessionData } = await supabase.auth.getSession();
+  if (sessionData?.session?.user) return sessionData.session.user;
+  const { data: userData } = await supabase.auth.getUser();
+  return userData?.user || fallbackUser || null;
 }
 
 /** Send a magic-link / OTP email. Returns { ok, error }. */
@@ -117,9 +129,10 @@ export async function signInWithPassword(username, password) {
     email: usernameToEmail(userCheck.username),
     password
   });
-  return error
-    ? { ok: false, error: friendlyAuthError(error.message) }
-    : { ok: true, user: data.user };
+  if (error) return { ok: false, error: friendlyAuthError(error.message) };
+  const user = await resolveSessionUser(supabase, data.user);
+  if (!user) return { ok: false, error: "Sign-in succeeded but no session — try again." };
+  return { ok: true, user };
 }
 
 /** Username + password sign-up for caregiver accounts. */
@@ -130,14 +143,31 @@ export async function signUpWithPassword(username, password) {
   if (!userCheck.ok) return userCheck;
   const passCheck = validatePassword(password);
   if (!passCheck.ok) return passCheck;
+  const email = usernameToEmail(userCheck.username);
   const { data, error } = await supabase.auth.signUp({
-    email: usernameToEmail(userCheck.username),
+    email,
     password,
     options: { data: { username: userCheck.username } }
   });
-  return error
-    ? { ok: false, error: friendlyAuthError(error.message) }
-    : { ok: true, user: data.user, needsConfirm: !data.session };
+  if (error) return { ok: false, error: friendlyAuthError(error.message) };
+
+  let user = data.session?.user || data.user || null;
+  if (!data.session) {
+    const signIn = await supabase.auth.signInWithPassword({ email, password });
+    if (!signIn.error) {
+      user = await resolveSessionUser(supabase, signIn.data?.user);
+    }
+  } else {
+    user = await resolveSessionUser(supabase, user);
+  }
+
+  if (user) return { ok: true, user, needsConfirm: false };
+  return {
+    ok: true,
+    user: data.user,
+    needsConfirm: true,
+    error: null
+  };
 }
 
 export async function signOut() {

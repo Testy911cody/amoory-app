@@ -112,6 +112,31 @@ function persistShareWithCommunity(checked) {
   });
 }
 
+function showAuthError(errorEl, msg) {
+  if (!errorEl) return;
+  if (msg) {
+    errorEl.textContent = msg;
+    errorEl.hidden = false;
+  } else {
+    errorEl.textContent = "";
+    errorEl.hidden = true;
+  }
+}
+
+function setAuthLoading(btn, loading, defaultLabel) {
+  if (!btn) return;
+  btn.disabled = !!loading;
+  btn.textContent = loading ? t("authLoading") : defaultLabel;
+}
+
+function resetRecordAuthPanel() {
+  showAuthError(document.getElementById("recordAuthError"), "");
+  const signedIn = document.getElementById("recordAuthSignedIn");
+  if (signedIn) signedIn.hidden = true;
+  const form = document.getElementById("recordAuthForm");
+  if (form) form.hidden = false;
+}
+
 function openRecordAuthPanel() {
   const panel = document.getElementById("recordAuthPanel");
   if (!panel) return;
@@ -122,6 +147,7 @@ function openRecordAuthPanel() {
   }
   closePanel(el.settingsPanel);
   closePanel(el.contributePanel);
+  resetRecordAuthPanel();
   document.getElementById("recordAuthHint").textContent = t("recordNeedsAccount");
   document.getElementById("recordAuthTitle").textContent = t("account");
   document.getElementById("recordAuthUsernameLbl").textContent = t("accountUsername");
@@ -129,9 +155,12 @@ function openRecordAuthPanel() {
   document.getElementById("recordAuthShareLbl").textContent = t("shareWithCommunity");
   document.getElementById("recordAuthSignInBtn").textContent = t("accountSignIn");
   document.getElementById("recordAuthSignUpBtn").textContent = t("accountSignUp");
+  const userInput = document.getElementById("recordAuthUsername");
+  if (userInput) userInput.placeholder = t("accountUsernamePlaceholder");
   const shareBox = document.getElementById("recordAuthShareCommunity");
   if (shareBox) shareBox.checked = settings.shareWithCommunity !== false;
   openPanel(panel);
+  userInput?.focus();
 }
 
 async function shareRecordingWithCommunity(word, blob) {
@@ -202,7 +231,8 @@ async function startRecording(word, cardEl) {
         await playBlob(blob);
         toast(t("savedVoice"));
         renderPersonalList();
-      } catch {
+      } catch (err) {
+        console.warn("savePersonalRecording failed:", err);
         toast(t("uploadFailed"));
       }
     }
@@ -957,49 +987,69 @@ function setupRecordAuth() {
   const shareBox = document.getElementById("recordAuthShareCommunity");
   const signInBtn = document.getElementById("recordAuthSignInBtn");
   const signUpBtn = document.getElementById("recordAuthSignUpBtn");
+  const errorEl = document.getElementById("recordAuthError");
+  const signedInEl = document.getElementById("recordAuthSignedIn");
+  const formEl = document.getElementById("recordAuthForm");
 
   shareBox?.addEventListener("change", e => persistShareWithCommunity(e.target.checked));
 
   async function onAuthSuccess(user, mode) {
-    authUser = user;
+    const sessionUser = await getCurrentUser();
+    authUser = sessionUser || user;
+    if (!authUser) {
+      showAuthError(errorEl, t("accountConfirmNeeded"));
+      return;
+    }
+    signedInEl.textContent = `${t("signedInAs")} ${displayUsername(authUser)}`;
+    signedInEl.hidden = false;
+    if (formEl) formEl.hidden = true;
+    showAuthError(errorEl, "");
+    await initPersonal(authUser);
+    await wait(600);
     closePanel(panel);
-    await initPersonal(user);
     const pending = pendingRecordAfterAuth;
     pendingRecordAfterAuth = null;
     if (pending?.word) {
-      toast(mode === "signup" ? t("signUpSuccess") : `${t("signedInAs")} ${displayUsername(user)}`);
+      toast(mode === "signup" ? t("signUpSuccess") : `${t("signedInAs")} ${displayUsername(authUser)}`);
       await startRecording(pending.word, pending.cardEl);
     }
   }
 
   async function tryAuth(mode) {
+    showAuthError(errorEl, "");
     const username = usernameInput?.value;
     const password = passInput?.value;
     const userCheck = validateUsername(username);
     if (!userCheck.ok) {
-      toast(t("usernameInvalid"));
+      showAuthError(errorEl, t("usernameInvalid"));
+      usernameInput?.focus();
       return;
     }
     if (!validatePassword(password).ok) {
-      toast(t("passwordTooShort"));
+      showAuthError(errorEl, t("passwordTooShort"));
+      passInput?.focus();
       return;
     }
     persistShareWithCommunity(shareBox?.checked !== false);
     const btn = mode === "signin" ? signInBtn : signUpBtn;
-    btn.disabled = true;
+    const defaultLabel = t(mode === "signin" ? "accountSignIn" : "accountSignUp");
+    setAuthLoading(signInBtn, true, t("accountSignIn"));
+    setAuthLoading(signUpBtn, true, t("accountSignUp"));
     const res = mode === "signin"
       ? await signInWithPassword(username, password)
       : await signUpWithPassword(username, password);
-    btn.disabled = false;
+    setAuthLoading(signInBtn, false, t("accountSignIn"));
+    setAuthLoading(signUpBtn, false, t("accountSignUp"));
     if (res.ok && res.user && !res.needsConfirm) {
       await onAuthSuccess(res.user, mode);
       return;
     }
     if (res.ok && res.needsConfirm) {
-      toast(t("accountHint"));
+      showAuthError(errorEl, t("accountConfirmNeeded"));
       return;
     }
-    toast(res.error || (mode === "signin" ? t("wrongCredentials") : t("usernameTaken")));
+    showAuthError(errorEl, res.error || (mode === "signin" ? t("wrongCredentials") : t("usernameTaken")));
+    btn?.focus();
   }
 
   signInBtn?.addEventListener("click", () => tryAuth("signin"));
@@ -1015,8 +1065,10 @@ function setupCaregiverAuth() {
   if (!box || !SUPABASE_READY) return;
 
   const statusEl = document.getElementById("caregiverAuthStatus");
+  const errorEl = document.getElementById("caregiverAuthError");
   const signInForm = document.getElementById("caregiverSignInForm");
   const signedInBox = document.getElementById("caregiverSignedIn");
+  const signedInAsEl = document.getElementById("caregiverSignedInAs");
   const usernameInput = document.getElementById("caregiverUsername");
   const passInput = document.getElementById("caregiverPassword");
   const signInBtn = document.getElementById("caregiverSignInBtn");
@@ -1025,8 +1077,10 @@ function setupCaregiverAuth() {
 
   async function reflect(user) {
     authUser = user || null;
+    showAuthError(errorEl, "");
     if (user) {
-      statusEl.textContent = `${t("signedInAs")} ${displayUsername(user)}`;
+      statusEl.textContent = t("accountHint");
+      signedInAsEl.textContent = `${t("signedInAs")} ${displayUsername(user)}`;
       signInForm.hidden = true;
       signedInBox.hidden = false;
       const sync = await initPersonal(user);
@@ -1043,49 +1097,45 @@ function setupCaregiverAuth() {
     }
   }
 
-  signInBtn?.addEventListener("click", async () => {
+  async function runAuth(mode) {
+    showAuthError(errorEl, "");
     const username = usernameInput?.value;
     const password = passInput?.value;
     const userCheck = validateUsername(username);
     if (!userCheck.ok) {
-      toast(t("usernameInvalid"));
+      showAuthError(errorEl, t("usernameInvalid"));
+      usernameInput?.focus();
       return;
     }
     if (!validatePassword(password).ok) {
-      toast(t("passwordTooShort"));
+      showAuthError(errorEl, t("passwordTooShort"));
+      passInput?.focus();
       return;
     }
     persistShareWithCommunity(document.getElementById("caregiverShareCommunity")?.checked !== false);
-    signInBtn.disabled = true;
-    const res = await signInWithPassword(username, password);
-    signInBtn.disabled = false;
-    toast(res.ok ? `${t("signedInAs")} ${displayUsername(res.user)}` : (res.error || t("wrongCredentials")));
-    if (res.ok) reflect(res.user);
-  });
+    const btn = mode === "signin" ? signInBtn : signUpBtn;
+    setAuthLoading(signInBtn, true, t("accountSignIn"));
+    setAuthLoading(signUpBtn, true, t("accountSignUp"));
+    const res = mode === "signin"
+      ? await signInWithPassword(username, password)
+      : await signUpWithPassword(username, password);
+    setAuthLoading(signInBtn, false, t("accountSignIn"));
+    setAuthLoading(signUpBtn, false, t("accountSignUp"));
+    if (res.ok && res.user && !res.needsConfirm) {
+      toast(mode === "signup" ? t("signUpSuccess") : `${t("signedInAs")} ${displayUsername(res.user)}`);
+      await reflect(res.user);
+      return;
+    }
+    if (res.ok && res.needsConfirm) {
+      showAuthError(errorEl, t("accountConfirmNeeded"));
+      return;
+    }
+    showAuthError(errorEl, res.error || (mode === "signin" ? t("wrongCredentials") : t("usernameTaken")));
+    btn?.focus();
+  }
 
-  signUpBtn?.addEventListener("click", async () => {
-    const username = usernameInput?.value;
-    const password = passInput?.value;
-    const userCheck = validateUsername(username);
-    if (!userCheck.ok) {
-      toast(t("usernameInvalid"));
-      return;
-    }
-    if (!validatePassword(password).ok) {
-      toast(t("passwordTooShort"));
-      return;
-    }
-    persistShareWithCommunity(document.getElementById("caregiverShareCommunity")?.checked !== false);
-    signUpBtn.disabled = true;
-    const res = await signUpWithPassword(username, password);
-    signUpBtn.disabled = false;
-    if (res.ok) {
-      toast(res.needsConfirm ? t("accountHint") : t("signUpSuccess"));
-      if (res.user && !res.needsConfirm) reflect(res.user);
-    } else {
-      toast(res.error || t("usernameTaken"));
-    }
-  });
+  signInBtn?.addEventListener("click", () => runAuth("signin"));
+  signUpBtn?.addEventListener("click", () => runAuth("signup"));
 
   document.getElementById("caregiverShareCommunity")?.addEventListener("change", e => {
     persistShareWithCommunity(e.target.checked);

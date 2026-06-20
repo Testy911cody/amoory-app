@@ -241,14 +241,22 @@ export async function savePersonalRecording(wordId, locale, dialect, blob, user,
     if (supabase) {
       const path = `${user.id}/${wordId}/${lang}.webm`;
       const up = await uploadAudio(user, path, blob);
-      if (up.ok) {
-        await supabase.from("user_recordings").upsert({
-          user_id: user.id,
-          word_key: wordId,
-          lang,
-          audio_path: path,
-          updated_at: new Date().toISOString()
-        }, { onConflict: "user_id,word_key,lang" });
+      if (!up.ok) {
+        const err = new Error(up.error || "upload-failed");
+        err.code = "cloud-upload";
+        throw err;
+      }
+      const { error: dbErr } = await supabase.from("user_recordings").upsert({
+        user_id: user.id,
+        word_key: wordId,
+        lang,
+        audio_path: path,
+        updated_at: new Date().toISOString()
+      }, { onConflict: "user_id,word_key,lang" });
+      if (dbErr) {
+        const err = new Error(dbErr.message);
+        err.code = "cloud-db";
+        throw err;
       }
     }
   }

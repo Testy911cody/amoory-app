@@ -191,7 +191,10 @@ export const UI_STRINGS = {
     wrongPin: "Wrong PIN",
     recordNeedsAccount: "Create an account to save your voice recordings.",
     shareWithCommunity: "Share with community",
-    accountNotConfigured: "Account sign-up is not set up yet. Contact the app administrator."
+    accountNotConfigured: "Account sign-up is not set up yet. Contact the app administrator.",
+    accountConfirmNeeded: "Account created but not active. The administrator must disable email confirmation in Supabase (Auth → Providers → Email).",
+    authLoading: "Please wait…",
+    authErrorTitle: "Could not sign in"
   },
   ar: {
     title: "لوحة الكلام",
@@ -277,7 +280,10 @@ export const UI_STRINGS = {
     micBlocked: "الميكروفون مقفول. اسمح بالوصول من إعدادات المتصفح.",
     recordNeedsAccount: "أنشئ حساباً عشان تحفظ تسجيلات صوتك.",
     shareWithCommunity: "شارك مع المجتمع",
-    accountNotConfigured: "إنشاء الحساب غير متاح حالياً."
+    accountNotConfigured: "إنشاء الحساب غير متاح حالياً.",
+    accountConfirmNeeded: "تم إنشاء الحساب لكنه غير مفعّل. يجب على المسؤول تعطيل تأكيد البريد في Supabase (Auth → Providers → Email).",
+    authLoading: "انتظر…",
+    authErrorTitle: "تعذّر تسجيل الدخول"
   }
 };
 
