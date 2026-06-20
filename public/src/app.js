@@ -25,10 +25,12 @@ import {
   listPersonalRecordings
 } from "./personal.js";
 import {
-  KID_VIEWS, wordsForKidView, cardSizeClass, labelForKidView, getUnlockedTier
+  KID_VIEWS, wordsForKidView, cardSizeClass, labelForKidView, getUnlockedTier,
+  boardViewKey, applySavedOrder
 } from "./kid-ui.js";
 import {
-  recordWordUse, getUniqueWordCount, setManualTier, resetUsageStats, getUsageStore
+  recordWordUse, getUniqueWordCount, setManualTier, resetUsageStats, getUsageStore,
+  setCardOrderForView
 } from "./usage.js";
 
 /* ---------------- Toast ---------------- */
@@ -55,6 +57,8 @@ function playBlob(blob) {
 }
 
 let authUser = null;
+let pendingRecordAfterAuth = null;
+let recordingAuthToastShown = false;
 let mediaRec = null, recChunks = [], recStream = null, recTimer = null, recStart = 0;
 let recordingWord = null, recordingCard = null;
 
@@ -92,7 +96,72 @@ function updateRecTimer() {
   elTimer.textContent = `${m}:${s}`;
 }
 
+function readShareWithCommunity() {
+  const el = document.getElementById("caregiverShareCommunity")
+    || document.getElementById("recordAuthShareCommunity");
+  if (el) return el.checked;
+  return settings.shareWithCommunity !== false;
+}
+
+function persistShareWithCommunity(checked) {
+  settings = saveSettings({ shareWithCommunity: !!checked });
+  const ids = ["caregiverShareCommunity", "recordAuthShareCommunity"];
+  ids.forEach(id => {
+    const box = document.getElementById(id);
+    if (box) box.checked = !!checked;
+  });
+}
+
+function openRecordAuthPanel() {
+  const panel = document.getElementById("recordAuthPanel");
+  if (!panel) return;
+  if (!SUPABASE_READY) {
+    toast(t("accountNotConfigured"));
+    openPanel(el.settingsPanel);
+    return;
+  }
+  closePanel(el.settingsPanel);
+  closePanel(el.contributePanel);
+  document.getElementById("recordAuthHint").textContent = t("recordNeedsAccount");
+  document.getElementById("recordAuthTitle").textContent = t("account");
+  document.getElementById("recordAuthUsernameLbl").textContent = t("accountUsername");
+  document.getElementById("recordAuthPasswordLbl").textContent = t("accountPassword");
+  document.getElementById("recordAuthShareLbl").textContent = t("shareWithCommunity");
+  document.getElementById("recordAuthSignInBtn").textContent = t("accountSignIn");
+  document.getElementById("recordAuthSignUpBtn").textContent = t("accountSignUp");
+  const shareBox = document.getElementById("recordAuthShareCommunity");
+  if (shareBox) shareBox.checked = settings.shareWithCommunity !== false;
+  openPanel(panel);
+}
+
+async function shareRecordingWithCommunity(word, blob) {
+  if (!word || !blob?.size) return;
+  await submitWord({
+    text: labelForWord(word, settings.locale, state.dialect),
+    category: word.categoryId || state.category,
+    emoji: word.emoji || "💬",
+    locale: settings.locale,
+    dialect: state.dialect,
+    audioBlob: blob,
+    shareOnline: true
+  });
+}
+
 async function startRecording(word, cardEl) {
+  let user = authUser;
+  if (!user) {
+    user = await getCurrentUser();
+    authUser = user;
+  }
+  if (!user) {
+    pendingRecordAfterAuth = { word, cardEl };
+    openRecordAuthPanel();
+    return;
+  }
+  if (!recordingAuthToastShown) {
+    recordingAuthToastShown = true;
+    toast(`${t("signedInAs")} ${displayUsername(user)}`);
+  }
   if (mediaRec?.state === "recording") { mediaRec.stop(); return; }
   if (!navigator.mediaDevices?.getUserMedia) {
     toast(t("micBlocked") || "This device can't record audio."); return;
@@ -120,7 +189,11 @@ async function startRecording(word, cardEl) {
 
     if (blob.size > 0 && w) {
       try {
-        await savePersonalRecording(w.id, settings.locale, state.dialect, blob, authUser);
+        const shareWithCommunity = readShareWithCommunity();
+        await savePersonalRecording(w.id, settings.locale, state.dialect, blob, authUser, { shareWithCommunity });
+        if (shareWithCommunity) {
+          await shareRecordingWithCommunity(w, blob);
+        }
         card?.classList.add("has-rec");
         if (card && !card.querySelector(".reciic")) {
           const tick = document.createElement("span");
@@ -229,7 +302,8 @@ function updateCaregiverAuthLabels() {
     caregiverPasswordLbl: "accountPassword",
     caregiverSignInBtn: "accountSignIn",
     caregiverSignUpBtn: "accountSignUp",
-    caregiverSignOutBtn: "signOut"
+    caregiverSignOutBtn: "signOut",
+    caregiverShareLbl: "shareWithCommunity"
   };
   for (const [id, key] of Object.entries(map)) {
     const el = document.getElementById(id);
@@ -237,6 +311,8 @@ function updateCaregiverAuthLabels() {
   }
   const userInput = document.getElementById("caregiverUsername");
   if (userInput) userInput.placeholder = t("accountUsernamePlaceholder");
+  const shareBox = document.getElementById("caregiverShareCommunity");
+  if (shareBox) shareBox.checked = settings.shareWithCommunity !== false;
 }
 
 function renderLangIndicator() {
@@ -343,8 +419,17 @@ function mergeAllWords(builtin, catId, locale, dialect) {
   return mergePersonalWords(withCommunity, catId, locale, dialect);
 }
 
+function getBoardViewKey() {
+  return boardViewKey(settings.locale, {
+    fullBoard: isCaregiver() && settings.fullBoard,
+    kidView: state.kidView,
+    category: state.category
+  });
+}
+
 function wordsForCategory(catId) {
-  return mergeAllWords(WORDS[catId] || [], catId, settings.locale, state.dialect);
+  const list = mergeAllWords(WORDS[catId] || [], catId, settings.locale, state.dialect);
+  return applySavedOrder(list, boardViewKey(settings.locale, { fullBoard: true, category: catId }));
 }
 
 function wordsForBoard() {
@@ -359,19 +444,83 @@ function wordsForBoard() {
   );
 }
 
+function reorderBoardCards(board, fromId, toId, viewKey) {
+  const cards = [...board.querySelectorAll(".word")];
+  const from = cards.find(c => c.dataset.wordId === fromId);
+  const to = cards.find(c => c.dataset.wordId === toId);
+  if (!from || !to || from === to) return;
+  if (cards.indexOf(from) < cards.indexOf(to)) to.after(from);
+  else to.before(from);
+  const ids = [...board.querySelectorAll(".word")].map(c => c.dataset.wordId);
+  setCardOrderForView(viewKey, ids);
+}
+
+function setupBoardDragDrop(board, viewKey) {
+  if (!isCaregiver()) return;
+  let dragId = null;
+
+  board.addEventListener("dragstart", e => {
+    const handle = e.target.closest(".drag-handle");
+    if (!handle) {
+      e.preventDefault();
+      return;
+    }
+    const card = handle.closest(".word");
+    if (!card) return;
+    dragId = card.dataset.wordId;
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", dragId);
+    card.classList.add("dragging");
+  });
+
+  board.addEventListener("dragend", () => {
+    board.querySelectorAll(".word.dragging, .word.drag-over").forEach(c => {
+      c.classList.remove("dragging", "drag-over");
+    });
+    dragId = null;
+  });
+
+  board.querySelectorAll(".word").forEach(card => {
+    card.addEventListener("dragover", e => {
+      if (!dragId || card.dataset.wordId === dragId) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      board.querySelectorAll(".word.drag-over").forEach(c => c.classList.remove("drag-over"));
+      card.classList.add("drag-over");
+    });
+    card.addEventListener("dragleave", e => {
+      if (!e.currentTarget.contains(e.relatedTarget)) {
+        card.classList.remove("drag-over");
+      }
+    });
+    card.addEventListener("drop", e => {
+      e.preventDefault();
+      card.classList.remove("drag-over");
+      const fromId = e.dataTransfer.getData("text/plain");
+      if (!fromId || fromId === card.dataset.wordId) return;
+      reorderBoardCards(board, fromId, card.dataset.wordId, viewKey);
+    });
+  });
+}
+
 function renderBoard() {
   el.board.innerHTML = "";
   const list = wordsForBoard();
+  const recordedKeys = getRecordedKeys();
   const kidMode = !isCaregiver() || !settings.fullBoard;
+  const viewKey = getBoardViewKey();
   const defaultColor = KID_VIEWS.find(v => v.id === state.kidView)?.color
     || CATEGORIES.find(c => c.id === state.category)?.color
     || "var(--accent)";
 
   list.forEach(w => {
     const key = recKey(w.id, settings.locale, state.dialect);
-    const card = document.createElement("button");
     const sizeClass = kidMode ? cardSizeClass(w) : "";
+    const card = document.createElement("div");
     card.className = `word${sizeClass ? ` ${sizeClass}` : ""}`;
+    card.dataset.wordId = w.id;
+    card.setAttribute("role", "button");
+    card.tabIndex = 0;
     const catColor = CATEGORIES.find(c => c.id === w.categoryId)?.color || defaultColor;
     card.style.borderColor = catColor;
     if (recordedKeys.has(key)) card.classList.add("has-rec");
@@ -387,15 +536,18 @@ function renderBoard() {
     const micHtml = isCaregiver()
       ? `<button class="mic" title="Record your voice">🎤</button>`
       : "";
+    const dragHtml = isCaregiver()
+      ? `<span class="drag-handle" draggable="true" title="Drag to reorder" aria-hidden="true">⠿</span>`
+      : "";
     const labelHtml = kidMode && (w.tier === 0 || w.isCore)
       ? `<span class="lbl lbl-min">${labelForWord(w, settings.locale, state.dialect)}</span>`
       : wordLabelHtml(w);
 
-    card.innerHTML = micHtml
+    card.innerHTML = dragHtml + micHtml
       + `<span class="emoji">${w.emoji}</span>${labelHtml}${badges.join("")}`;
 
     card.onclick = async (e) => {
-      if (e.target.closest(".mic")) return;
+      if (e.target.closest(".mic") || e.target.closest(".drag-handle")) return;
       recordWordUse(w.id);
       await speakWord(w);
       state.sentence.push(w);
@@ -405,12 +557,30 @@ function renderBoard() {
         card.classList.add(cardSizeClass(w));
       }
     };
+    card.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        if (!e.target.closest(".mic")) card.click();
+      }
+    });
     const mic = card.querySelector(".mic");
-    if (mic) mic.onclick = (e) => { e.stopPropagation(); startRecording(w, card); };
+    if (mic) {
+      mic.addEventListener("pointerdown", (e) => e.stopPropagation());
+      mic.addEventListener("click", (e) => {
+        e.stopPropagation();
+        startRecording(w, card);
+      });
+    }
+    const handle = card.querySelector(".drag-handle");
+    if (handle) {
+      handle.addEventListener("pointerdown", (e) => e.stopPropagation());
+      handle.addEventListener("click", (e) => e.stopPropagation());
+    }
 
     if (isCaregiver()) {
       let pressTimer = null;
-      card.addEventListener("pointerdown", () => {
+      card.addEventListener("pointerdown", (e) => {
+        if (e.target.closest(".mic") || e.target.closest(".drag-handle")) return;
         pressTimer = setTimeout(() => startRecording(w, card), 800);
       });
       const cancelPress = () => { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; } };
@@ -421,6 +591,8 @@ function renderBoard() {
 
     el.board.appendChild(card);
   });
+
+  setupBoardDragDrop(el.board, viewKey);
 
   if (!list.length && state.kidView === "more") {
     const msg = document.createElement("p");
@@ -517,7 +689,11 @@ document.getElementById("settingsBtn").onclick = () => {
   openPanel(el.settingsPanel);
 };
 document.getElementById("settingsClose").onclick = () => closePanel(el.settingsPanel);
-document.getElementById("contributeBtn").onclick = () => openPanel(el.contributePanel);
+document.getElementById("contributeBtn").onclick = () => {
+  const share = document.getElementById("contribShareOnline");
+  if (share) share.checked = true;
+  openPanel(el.contributePanel);
+};
 document.getElementById("contributeClose").onclick = () => closePanel(el.contributePanel);
 document.getElementById("scheduleBtn").onclick = () => {
   renderSchedule();
@@ -742,6 +918,8 @@ document.getElementById("contribForm").onsubmit = async e => {
   });
   toast(t("communityAdded"));
   document.getElementById("contribForm").reset();
+  const contribShare = document.getElementById("contribShareOnline");
+  if (contribShare) contribShare.checked = true;
   contribBlob = null;
   const btn = document.getElementById("contribRecordBtn");
   btn.textContent = t("recordHint");
@@ -770,6 +948,68 @@ function populateContribCategories() {
 }
 
 /* ---------------- Caregiver account (personal recordings cloud sync) ---------------- */
+function setupRecordAuth() {
+  const panel = document.getElementById("recordAuthPanel");
+  if (!panel || !SUPABASE_READY) return;
+
+  const usernameInput = document.getElementById("recordAuthUsername");
+  const passInput = document.getElementById("recordAuthPassword");
+  const shareBox = document.getElementById("recordAuthShareCommunity");
+  const signInBtn = document.getElementById("recordAuthSignInBtn");
+  const signUpBtn = document.getElementById("recordAuthSignUpBtn");
+
+  shareBox?.addEventListener("change", e => persistShareWithCommunity(e.target.checked));
+
+  async function onAuthSuccess(user, mode) {
+    authUser = user;
+    closePanel(panel);
+    await initPersonal(user);
+    const pending = pendingRecordAfterAuth;
+    pendingRecordAfterAuth = null;
+    if (pending?.word) {
+      toast(mode === "signup" ? t("signUpSuccess") : `${t("signedInAs")} ${displayUsername(user)}`);
+      await startRecording(pending.word, pending.cardEl);
+    }
+  }
+
+  async function tryAuth(mode) {
+    const username = usernameInput?.value;
+    const password = passInput?.value;
+    const userCheck = validateUsername(username);
+    if (!userCheck.ok) {
+      toast(t("usernameInvalid"));
+      return;
+    }
+    if (!validatePassword(password).ok) {
+      toast(t("passwordTooShort"));
+      return;
+    }
+    persistShareWithCommunity(shareBox?.checked !== false);
+    const btn = mode === "signin" ? signInBtn : signUpBtn;
+    btn.disabled = true;
+    const res = mode === "signin"
+      ? await signInWithPassword(username, password)
+      : await signUpWithPassword(username, password);
+    btn.disabled = false;
+    if (res.ok && res.user && !res.needsConfirm) {
+      await onAuthSuccess(res.user, mode);
+      return;
+    }
+    if (res.ok && res.needsConfirm) {
+      toast(t("accountHint"));
+      return;
+    }
+    toast(res.error || (mode === "signin" ? t("wrongCredentials") : t("usernameTaken")));
+  }
+
+  signInBtn?.addEventListener("click", () => tryAuth("signin"));
+  signUpBtn?.addEventListener("click", () => tryAuth("signup"));
+  document.getElementById("recordAuthClose")?.addEventListener("click", () => {
+    pendingRecordAfterAuth = null;
+    closePanel(panel);
+  });
+}
+
 function setupCaregiverAuth() {
   const box = document.getElementById("caregiverAuth");
   if (!box || !SUPABASE_READY) return;
@@ -815,6 +1055,7 @@ function setupCaregiverAuth() {
       toast(t("passwordTooShort"));
       return;
     }
+    persistShareWithCommunity(document.getElementById("caregiverShareCommunity")?.checked !== false);
     signInBtn.disabled = true;
     const res = await signInWithPassword(username, password);
     signInBtn.disabled = false;
@@ -834,6 +1075,7 @@ function setupCaregiverAuth() {
       toast(t("passwordTooShort"));
       return;
     }
+    persistShareWithCommunity(document.getElementById("caregiverShareCommunity")?.checked !== false);
     signUpBtn.disabled = true;
     const res = await signUpWithPassword(username, password);
     signUpBtn.disabled = false;
@@ -843,6 +1085,10 @@ function setupCaregiverAuth() {
     } else {
       toast(res.error || t("usernameTaken"));
     }
+  });
+
+  document.getElementById("caregiverShareCommunity")?.addEventListener("change", e => {
+    persistShareWithCommunity(e.target.checked);
   });
 
   signOutBtn?.addEventListener("click", async () => {
@@ -1062,18 +1308,13 @@ function populateSecondaryLocales() {
   document.getElementById("bilingualToggle").checked = settings.bilingual;
 }
 
-(async function init() {
-  initTTS();
-  try {
-    authUser = await getCurrentUser();
-    await initCommunity();
-    await initPersonal(authUser);
-  } catch {}
+function bootUI() {
   state.dialect = settings.dialect;
   populateContribCategories();
   populateSecondaryLocales();
   setupContributorAuth();
   setupCaregiverAuth();
+  setupRecordAuth();
   setupCustomWordForm();
   setupCaregiverGate();
   initSchedule({
@@ -1083,6 +1324,18 @@ function populateSecondaryLocales() {
     wordsForCategory
   });
   refreshAll();
+}
+
+(async function init() {
+  initTTS();
+  bootUI();
+  try {
+    authUser = await getCurrentUser();
+    await Promise.allSettled([initCommunity(), initPersonal(authUser)]);
+    refreshAll();
+  } catch {
+    /* board already rendered from bootUI */
+  }
 })();
 
 let unlocked = false;

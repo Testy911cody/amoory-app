@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ar">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
@@ -142,6 +142,10 @@
               <span id="caregiverPasswordLbl">Password</span>
               <input type="password" id="caregiverPassword" autocomplete="current-password" minlength="6">
             </label>
+            <label class="field check">
+              <input type="checkbox" id="caregiverShareCommunity" checked>
+              <span id="caregiverShareLbl">Share with community</span>
+            </label>
             <div class="row">
               <button type="button" class="btn-primary" id="caregiverSignInBtn">Sign in</button>
               <button type="button" class="btn-secondary" id="caregiverSignUpBtn">Create account</button>
@@ -254,7 +258,7 @@
 
         <!-- Online sharing (only shown when Supabase is configured) -->
         <div class="field check" id="shareOnlineField" hidden>
-          <input type="checkbox" id="contribShareOnline">
+          <input type="checkbox" id="contribShareOnline" checked>
           <span id="shareOnlineLbl">Share with the community online</span>
         </div>
         <div class="contrib-auth" id="contribAuth" hidden>
@@ -272,6 +276,35 @@
           <button type="submit" class="btn-primary">Submit</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- Recording auth gate (caregiver must sign in to record) -->
+  <div class="panel" id="recordAuthPanel" hidden aria-hidden="true">
+    <div class="panel-inner">
+      <div class="panel-head">
+        <h2 id="recordAuthTitle">Save your recordings</h2>
+        <button class="icon-btn" id="recordAuthClose" aria-label="Close">✕</button>
+      </div>
+      <div class="panel-body">
+        <p class="muted" id="recordAuthHint">Create an account to save your voice recordings.</p>
+        <label class="field">
+          <span id="recordAuthUsernameLbl">Username</span>
+          <input type="text" id="recordAuthUsername" autocomplete="username" placeholder="your_name" minlength="3" pattern="[a-zA-Z0-9_]+">
+        </label>
+        <label class="field">
+          <span id="recordAuthPasswordLbl">Password</span>
+          <input type="password" id="recordAuthPassword" autocomplete="current-password" minlength="6">
+        </label>
+        <label class="field check">
+          <input type="checkbox" id="recordAuthShareCommunity" checked>
+          <span id="recordAuthShareLbl">Share with community</span>
+        </label>
+        <div class="row">
+          <button type="button" class="btn-primary" id="recordAuthSignInBtn">Sign in</button>
+          <button type="button" class="btn-secondary" id="recordAuthSignUpBtn">Create account</button>
+        </div>
+      </div>
     </div>
   </div>
 

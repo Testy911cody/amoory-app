@@ -1,26 +1,15 @@
 /* Talk Board — community word contributions (Phase 1: localStorage + IndexedDB)
    Phase 2: sync approved rows from Supabase — see docs/supabase-community-words.sql */
 
-import { getSupabase, SUPABASE_READY } from "./supabase.js";
+import { getSupabase, SUPABASE_READY, AUDIO_BUCKET, getCurrentUser } from "./supabase.js";
+import { openTalkBoardDB } from "./idb.js";
 
 const QUEUE_KEY = "talkboard_community_queue";
 const REMOTE_CACHE_KEY = "talkboard_community_remote";
 const AUDIO_PREFIX = "community__";
 
-let db = null;
-
-function openDB() {
-  if (db) return Promise.resolve(db);
-  return new Promise((res, rej) => {
-    const r = indexedDB.open("talkboard", 3);
-    r.onupgradeneeded = e => {
-      const d = e.target.result;
-      if (!d.objectStoreNames.contains("recordings")) d.createObjectStore("recordings");
-      if (!d.objectStoreNames.contains("community_audio")) d.createObjectStore("community_audio");
-    };
-    r.onsuccess = e => { db = e.target.result; res(db); };
-    r.onerror = e => rej(e);
-  });
+async function openDB() {
+  return openTalkBoardDB();
 }
 
 function readQueue() {
@@ -75,6 +64,7 @@ export async function initCommunity() {
   if (SUPABASE_READY) {
     try {
       await pullApprovedFromSupabase();
+      await syncShareQueue();
     } catch (err) {
       console.warn("[Talk Board] Supabase community sync skipped:", err?.message || err);
     }
@@ -112,9 +102,9 @@ function audioKey(id) {
 }
 
 async function saveCommunityAudio(id, blob) {
-  await openDB();
+  const database = await openDB();
   return new Promise((res, rej) => {
-    const tx = db.transaction("community_audio", "readwrite");
+    const tx = database.transaction("community_audio", "readwrite");
     tx.objectStore("community_audio").put(blob, audioKey(id));
     tx.oncomplete = res;
     tx.onerror = rej;
@@ -131,17 +121,20 @@ export async function getCommunityAudio(id) {
       /* fall through to IndexedDB */
     }
   }
-  await openDB();
+  const database = await openDB();
   return new Promise(res => {
-    const tx = db.transaction("community_audio", "readonly");
+    const tx = database.transaction("community_audio", "readonly");
     const rq = tx.objectStore("community_audio").get(audioKey(id));
     rq.onsuccess = () => res(rq.result || null);
     rq.onerror = () => res(null);
   });
 }
 
-/** Submit a new community word (starts as pending). */
-export async function submitWord({ text, category, emoji, locale, dialect, audioBlob }) {
+/** Submit a new community word (starts as pending).
+   When `shareOnline` is set and Supabase is configured + the contributor is
+   signed in, the word + audio are also pushed to the shared online library.
+   Everything is always saved locally first, so submitting never fails. */
+export async function submitWord({ text, category, emoji, locale, dialect, audioBlob, shareOnline }) {
   const entry = {
     id: `cw_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     text: String(text).trim(),
@@ -152,13 +145,68 @@ export async function submitWord({ text, category, emoji, locale, dialect, audio
     source: "community",
     status: "pending",
     hasAudio: !!audioBlob,
+    shareOnline: !!shareOnline,
+    syncedOnline: false,
     submittedAt: new Date().toISOString()
   };
   if (audioBlob) await saveCommunityAudio(entry.id, audioBlob);
   const queue = readQueue();
   queue.push(entry);
   writeQueue(queue);
+
+  if (shareOnline && SUPABASE_READY) {
+    try { await syncShareQueue(); } catch { /* retried later */ }
+  }
   return entry;
+}
+
+/** Upload one queued entry to Supabase Storage + community_words table. */
+async function uploadEntryToSupabase(entry) {
+  const supabase = await getSupabase();
+  if (!supabase) return { ok: false, reason: "not-configured" };
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, reason: "auth" };
+
+  let audioUrl = null;
+  if (entry.hasAudio) {
+    const blob = await getCommunityAudio(entry.id);
+    if (blob) {
+      const path = `${user.id}/${entry.id}.webm`;
+      const up = await supabase.storage
+        .from(AUDIO_BUCKET)
+        .upload(path, blob, { contentType: blob.type || "audio/webm", upsert: true });
+      if (up.error) return { ok: false, reason: up.error.message };
+      audioUrl = supabase.storage.from(AUDIO_BUCKET).getPublicUrl(path).data.publicUrl;
+    }
+  }
+
+  const { error } = await supabase.from("community_words").insert({
+    text: entry.text,
+    category: entry.category,
+    emoji: entry.emoji,
+    locale: entry.locale,
+    dialect: entry.dialect,
+    audio_url: audioUrl,
+    status: "pending",
+    submitted_by: user.id
+  });
+  if (error) return { ok: false, reason: error.message };
+  return { ok: true };
+}
+
+/** Push any not-yet-synced "share online" entries. Safe to call repeatedly. */
+export async function syncShareQueue() {
+  if (!SUPABASE_READY) return { uploaded: 0, pendingAuth: 0 };
+  const queue = readQueue();
+  let uploaded = 0, pendingAuth = 0;
+  for (const entry of queue) {
+    if (!entry.shareOnline || entry.syncedOnline) continue;
+    const res = await uploadEntryToSupabase(entry);
+    if (res.ok) { entry.syncedOnline = true; uploaded++; }
+    else if (res.reason === "auth") { pendingAuth++; }
+  }
+  if (uploaded) writeQueue(queue);
+  return { uploaded, pendingAuth };
 }
 
 export function approveSubmission(id) {
@@ -181,22 +229,26 @@ export function rejectSubmission(id) {
 export function mergeCommunityWords(builtinWords, categoryId, localeCode, dialectId) {
   const approved = getApprovedWords(localeCode, dialectId)
     .filter(w => w.category === categoryId)
-    .map(w => ({
-      id: w.id,
-      emoji: w.emoji,
-      labels: { [localeCode]: w.text },
-      source: "community",
-      status: "approved",
-      communityId: w.id
-    }));
+    .map(w => {
+      const key = (dialectId && dialectId !== "default") ? `${localeCode}-${String(dialectId).toUpperCase()}` : localeCode;
+      return {
+        id: w.id,
+        emoji: w.emoji,
+        labels: { [key]: w.text },
+        source: "community",
+        status: "approved",
+        communityId: w.id
+      };
+    });
   return [...builtinWords, ...approved];
 }
 
 export function communityWordToPlayable(entry) {
+  const key = (entry.dialect && entry.dialect !== "default") ? `${entry.locale}-${String(entry.dialect).toUpperCase()}` : entry.locale;
   return {
     id: entry.id,
     emoji: entry.emoji,
-    labels: { [entry.locale]: entry.text },
+    labels: { [key]: entry.text },
     source: "community",
     status: entry.status,
     communityId: entry.id

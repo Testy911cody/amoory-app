@@ -188,7 +188,10 @@ export const UI_STRINGS = {
     noPersonalRecordings: "No personal recordings yet for this language.",
     uploadFailed: "Could not upload — saved on this device only.",
     micBlocked: "Microphone blocked. Allow access in browser settings.",
-    wrongPin: "Wrong PIN"
+    wrongPin: "Wrong PIN",
+    recordNeedsAccount: "Create an account to save your voice recordings.",
+    shareWithCommunity: "Share with community",
+    accountNotConfigured: "Account sign-up is not set up yet. Contact the app administrator."
   },
   ar: {
     title: "لوحة الكلام",
@@ -271,7 +274,10 @@ export const UI_STRINGS = {
     personalRecordings: "تسجيلاتك الشخصية",
     noPersonalRecordings: "ما في تسجيلات شخصية لهذه اللغة بعد.",
     uploadFailed: "ما اترفع — اتحفظ على الجهاز بس.",
-    micBlocked: "الميكروفون مقفول. اسمح بالوصول من إعدادات المتصفح."
+    micBlocked: "الميكروفون مقفول. اسمح بالوصول من إعدادات المتصفح.",
+    recordNeedsAccount: "أنشئ حساباً عشان تحفظ تسجيلات صوتك.",
+    shareWithCommunity: "شارك مع المجتمع",
+    accountNotConfigured: "إنشاء الحساب غير متاح حالياً."
   }
 };
 
@@ -292,10 +298,27 @@ export function uiString(localeCode, key) {
   return pack[key] || UI_STRINGS.en[key] || key;
 }
 
+function normalizeSettings(s) {
+  const defaults = defaultSettings();
+  const loc = LOCALES.find(l => l.code === s.locale);
+  if (!loc) {
+    s.locale = defaults.locale;
+    s.dialect = defaults.dialect;
+    return s;
+  }
+  const dialects = loc.dialects.length
+    ? loc.dialects
+    : [{ id: "default", name: loc.name, nativeName: loc.nativeName }];
+  if (!dialects.some(d => d.id === s.dialect)) {
+    s.dialect = dialects[0]?.id || defaults.dialect;
+  }
+  return s;
+}
+
 export function loadSettings() {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
-    if (raw) return { ...defaultSettings(), ...JSON.parse(raw) };
+    if (raw) return normalizeSettings({ ...defaultSettings(), ...JSON.parse(raw) });
   } catch {}
   return defaultSettings();
 }
@@ -308,14 +331,15 @@ export function saveSettings(partial) {
 
 export function defaultSettings() {
   return {
-    locale: "en",
-    dialect: "us",
+    locale: "ar",
+    dialect: "sd",
     secondaryLocale: null,
     bilingual: false,
     voiceURI: null,
     caregiverPin: null,
     caregiverActive: false,
-    fullBoard: false
+    fullBoard: false,
+    shareWithCommunity: true
   };
 }
 

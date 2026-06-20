@@ -1,5 +1,6 @@
 /* Talk Board — Web Speech API (free, built-in TTS)
-   Maps locale/dialect codes to available system voices with graceful fallback. */
+   Receives translated text (not English) + BCP-47 lang. Falls back to any ar voice for ar-SD etc.
+   Personal/community audio (per lang) take precedence. */
 
 let voices = [];
 let warnedLocales = new Set();
@@ -51,6 +52,15 @@ export function voiceFor(ttsLang, voiceURI = null) {
   const byPrefix = voices.find(v => langPrefix(v.lang) === prefix);
   if (byPrefix) return byPrefix;
 
+  // Arabic dialects (e.g. ar-SD) often lack a dedicated voice — try common Arabic tags
+  if (prefix === "ar") {
+    const fallbacks = ["ar-SA", "ar-EG", "ar-AE", "ar"];
+    for (const tag of fallbacks) {
+      const v = voices.find(vo => langMatches(vo.lang, tag));
+      if (v) return v;
+    }
+  }
+
   return null;
 }
 
@@ -73,6 +83,7 @@ export function say(text, ttsLang, opts = {}) {
   const v = voiceFor(ttsLang, opts.voiceURI);
   if (!v && !warnedLocales.has(ttsLang)) {
     warnedLocales.add(ttsLang);
+    console.warn(`[TTS] No dedicated voice for ${ttsLang}. Will attempt synthesis using lang tag (text will still be spoken in target language if synth supports it).`);
   }
 
   speechSynthesis.cancel();
@@ -81,7 +92,10 @@ export function say(text, ttsLang, opts = {}) {
     u.voice = v;
     u.lang = v.lang;
   } else {
-    u.lang = ttsLang || "en-US";
+    // For Sudanese Arabic (ar-SD) browsers often lack exact, fall back to 'ar' for better synth support while using Arabic text
+    let utterLang = ttsLang || "en-US";
+    if (ttsLang === "ar-SD" || ttsLang === "ar-sd") utterLang = "ar";
+    u.lang = utterLang;
   }
   u.rate = opts.rate ?? 0.82;
   u.pitch = opts.pitch ?? 1.05;

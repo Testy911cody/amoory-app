@@ -1,9 +1,10 @@
 /* Talk Board service worker — makes the app work offline.
    Bump CACHE_VERSION whenever app files change so users get the update. */
-const CACHE_VERSION = "talkboard-v2";
+const CACHE_VERSION = "talkboard-v8";
+const SHELL_URL = "./index.html";
 const CORE_ASSETS = [
-  "./",
-  "./index.html",
+  SHELL_URL,
+  "./privacy.html",
   "./src/app.js",
   "./src/data.js",
   "./src/config.js",
@@ -11,16 +12,43 @@ const CORE_ASSETS = [
   "./src/locales.js",
   "./src/tts.js",
   "./src/community.js",
+  "./src/personal.js",
+  "./src/idb.js",
+  "./src/schedule.js",
+  "./src/priorities.js",
+  "./src/usage.js",
+  "./src/kid-ui.js",
   "./src/styles.css",
   "./manifest.json",
   "./icons/icon-192.png",
-  "./icons/icon-512.png"
+  "./icons/icon-512.png",
+  "./icons/apple-touch-icon.png"
 ];
 
-// Install: pre-cache the core app shell
+function networkFetch(req) {
+  return fetch(new Request(req, { redirect: "follow" }));
+}
+
+function isCacheable(res) {
+  return res && res.ok && res.type === "basic";
+}
+
+function isNavigation(req) {
+  return req.mode === "navigate" || req.destination === "document";
+}
+
+// Install: pre-cache the core app shell (never cache "./" — it may be a redirect)
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_VERSION).then((cache) => cache.addAll(CORE_ASSETS))
+    caches.open(CACHE_VERSION).then(async (cache) => {
+      await Promise.allSettled(
+        CORE_ASSETS.map((url) =>
+          networkFetch(url).then((res) => {
+            if (isCacheable(res)) return cache.put(url, res);
+          })
+        )
+      );
+    })
   );
   self.skipWaiting();
 });
@@ -36,8 +64,9 @@ self.addEventListener("activate", (event) => {
 });
 
 // Fetch strategy:
-// - App shell + same-origin files: cache-first (instant, offline-safe)
-// - Supabase / network calls: network-first, fall back to cache if offline
+// - HTML navigation: network-first (host may rewrite/redirect amoory paths)
+// - Other same-origin assets: cache-first
+// - Remote: network-first with cache fallback
 self.addEventListener("fetch", (event) => {
   const req = event.request;
   if (req.method !== "GET") return;
@@ -45,28 +74,46 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(req.url);
   const isSameOrigin = url.origin === self.location.origin;
 
-  if (isSameOrigin) {
+  if (isSameOrigin && isNavigation(req)) {
     event.respondWith(
-      caches.match(req).then((cached) => cached || fetchAndCache(req))
-    );
-  } else {
-    // remote (e.g. recordings/pictures): try network, cache the result, fall back to cache
-    event.respondWith(
-      fetch(req)
+      networkFetch(req)
         .then((res) => {
-          const copy = res.clone();
-          caches.open(CACHE_VERSION).then((c) => c.put(req, copy));
+          if (isCacheable(res)) {
+            const copy = res.clone();
+            caches.open(CACHE_VERSION).then((c) => c.put(SHELL_URL, copy));
+          }
           return res;
         })
-        .catch(() => caches.match(req))
+        .catch(() => caches.match(SHELL_URL))
     );
+    return;
   }
-});
 
-function fetchAndCache(req) {
-  return fetch(req).then((res) => {
-    const copy = res.clone();
-    caches.open(CACHE_VERSION).then((c) => c.put(req, copy));
-    return res;
-  });
-}
+  if (isSameOrigin) {
+    event.respondWith(
+      caches.match(req).then((cached) => {
+        if (cached && cached.ok) return cached;
+        return networkFetch(req).then((res) => {
+          if (isCacheable(res)) {
+            const copy = res.clone();
+            caches.open(CACHE_VERSION).then((c) => c.put(req, copy));
+          }
+          return res;
+        });
+      })
+    );
+    return;
+  }
+
+  event.respondWith(
+    networkFetch(req)
+      .then((res) => {
+        if (isCacheable(res)) {
+          const copy = res.clone();
+          caches.open(CACHE_VERSION).then((c) => c.put(req, copy));
+        }
+        return res;
+      })
+      .catch(() => caches.match(req))
+  );
+});
