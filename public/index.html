@@ -4,25 +4,49 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#2E8C8C">
-<meta name="description" content="Talk Board — a picture-and-voice communication app for nonspeaking children. Any language, community voices.">
+<meta name="description" content="Talk Board — a free picture-and-voice communication app (AAC) for nonspeaking children. Tap pictures to speak in any language, with community-recorded dialect voices.">
+<title>Talk Board — Picture & Voice Communication</title>
+
+<!-- PWA + icons -->
 <link rel="manifest" href="./manifest.json">
-<link rel="apple-touch-icon" href="./icons/icon-192.png">
+<link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="./icons/favicon-16.png">
+<link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Talk Board">
-<title>Talk Board</title>
+<meta name="application-name" content="Talk Board">
+
+<!-- SEO -->
+<meta name="robots" content="index, follow">
+<meta name="keywords" content="AAC, communication board, nonspeaking, autism, speech, picture cards, Sudanese Arabic, Juba Arabic, accessibility, free">
+
+<!-- Open Graph / social -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Talk Board">
+<meta property="og:title" content="Talk Board — Picture & Voice Communication">
+<meta property="og:description" content="A free AAC app for nonspeaking children. Tap pictures to speak in any language, with community-recorded dialect voices.">
+<meta property="og:image" content="./icons/icon-512.png">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Talk Board — Picture & Voice Communication">
+<meta name="twitter:description" content="A free AAC app for nonspeaking children, with community dialect voices.">
+<meta name="twitter:image" content="./icons/icon-512.png">
+
 <link rel="stylesheet" href="./src/styles.css">
 </head>
-<body>
+<body class="kid-mode">
   <div class="topbar">
     <div class="title" id="appTitle">Talk Board</div>
+    <span id="langIndicator" class="lang-chip" aria-live="polite" title="Current speak language"></span>
     <div class="topbar-actions">
-      <button class="icon-btn" id="contributeBtn" title="Suggest a word">➕</button>
-      <button class="icon-btn" id="settingsBtn" title="Settings">⚙️</button>
+      <button class="icon-btn" id="scheduleBtn" title="First / Then">📅</button>
+      <button class="icon-btn caregiver-only" id="contributeBtn" title="Suggest a word" hidden>➕</button>
+      <button class="icon-btn" id="settingsBtn" title="Settings (hold for caregiver)">⚙️</button>
     </div>
   </div>
 
-  <div class="localebar">
+  <div class="localebar caregiver-only" id="localebar" hidden>
     <label for="localeSelect"><span data-i18n="language">Language</span></label>
     <select id="localeSelect" aria-label="Choose language"></select>
     <label for="dialectSelect"><span data-i18n="dialect">Dialect</span></label>
@@ -47,24 +71,158 @@
         <button class="icon-btn" id="settingsClose" aria-label="Close">✕</button>
       </div>
       <div class="panel-body">
-        <label class="field">
+        <div class="caregiver-banner" id="caregiverBanner" hidden>
+          <p><strong id="caregiverModeLbl">Caregiver mode</strong></p>
+          <button type="button" class="btn-secondary" id="exitCaregiverBtn">Back to kid view</button>
+        </div>
+        <p class="muted caregiver-only" id="caregiverHint" hidden>Hold ⚙️ for 2 seconds to open caregiver settings.</p>
+
+        <div class="caregiver-only" id="caregiverLang" hidden>
+          <label class="field">
+            <span>Language</span>
+            <select id="settingsLocaleSelect" aria-label="Choose language"></select>
+          </label>
+          <label class="field">
+            <span>Dialect</span>
+            <select id="settingsDialectSelect" aria-label="Choose dialect"></select>
+          </label>
+        </div>
+
+        <label class="field caregiver-only" id="caregiverPinField" hidden>
+          <span>Set caregiver PIN (optional, 4 digits)</span>
+          <input type="password" id="caregiverPinInput" inputmode="numeric" maxlength="4" pattern="[0-9]*" placeholder="••••">
+        </label>
+
+        <hr class="caregiver-only" hidden>
+        <h3 class="caregiver-only" hidden>Word learning</h3>
+        <p class="muted caregiver-only" id="usageStats" hidden></p>
+        <label class="field caregiver-only" hidden>
+          <span>Unlock words up to tier</span>
+          <select id="unlockTierSelect">
+            <option value="">Auto (based on use)</option>
+            <option value="0">Tier 0 — core only</option>
+            <option value="1">Tier 1 — feelings & wants</option>
+            <option value="2">Tier 2 — places & activities</option>
+            <option value="3">Tier 3 — all words</option>
+          </select>
+        </label>
+        <label class="field check caregiver-only" hidden>
+          <input type="checkbox" id="fullBoardToggle">
+          <span>Show all categories (advanced)</span>
+        </label>
+        <button type="button" class="btn-secondary caregiver-only" id="resetUsageBtn" hidden>Reset word usage stats</button>
+
+        <hr class="caregiver-only" hidden>
+        <label class="field caregiver-only" hidden>
           <span>Voice</span>
           <div class="row">
             <select id="voiceSelect" aria-label="Choose voice"></select>
             <button type="button" class="btn-secondary" id="previewVoiceBtn">Preview</button>
           </div>
         </label>
-        <label class="field check">
+        <label class="field check caregiver-only" hidden>
           <input type="checkbox" id="bilingualToggle">
           <span>Show second language on cards</span>
         </label>
-        <label class="field">
+        <label class="field caregiver-only" hidden>
           <span>Second language</span>
           <select id="secondaryLocaleSelect" aria-label="Second language"></select>
         </label>
+
+        <hr class="caregiver-only" id="caregiverAuthHr" hidden>
+        <div class="caregiver-only contrib-auth" id="caregiverAuth" hidden>
+          <h3 id="caregiverAccountLbl">Your account</h3>
+          <p class="muted" id="caregiverAuthStatus">Sign in to save personal recordings in the cloud.</p>
+          <div id="caregiverSignInForm">
+            <label class="field">
+              <span id="caregiverUsernameLbl">Username</span>
+              <input type="text" id="caregiverUsername" autocomplete="username" placeholder="your_name" minlength="3" pattern="[a-zA-Z0-9_]+">
+            </label>
+            <label class="field">
+              <span id="caregiverPasswordLbl">Password</span>
+              <input type="password" id="caregiverPassword" autocomplete="current-password" minlength="6">
+            </label>
+            <div class="row">
+              <button type="button" class="btn-primary" id="caregiverSignInBtn">Sign in</button>
+              <button type="button" class="btn-secondary" id="caregiverSignUpBtn">Create account</button>
+            </div>
+          </div>
+          <div id="caregiverSignedIn" hidden>
+            <button type="button" class="btn-secondary" id="caregiverSignOutBtn">Sign out</button>
+          </div>
+        </div>
+
+        <hr class="caregiver-only" hidden>
+        <h3 class="caregiver-only" hidden>Your personal recordings</h3>
+        <div id="personalRecList" class="caregiver-only" hidden></div>
+
+        <hr class="caregiver-only" hidden>
+        <h3 class="caregiver-only" hidden>My words</h3>
+        <div id="customWordsList" class="caregiver-only" hidden></div>
+        <form class="caregiver-only" id="customWordForm" hidden>
+          <label class="field">
+            <span>Word label (current language)</span>
+            <input type="text" id="customWordLabel" maxlength="80" required placeholder="Type the word">
+          </label>
+          <label class="field">
+            <span>English hint (optional)</span>
+            <input type="text" id="customWordHint" maxlength="80" placeholder="e.g. water">
+          </label>
+          <label class="field">
+            <span>Emoji</span>
+            <input type="text" id="customWordEmoji" maxlength="4" placeholder="💬">
+          </label>
+          <label class="field">
+            <span>Category</span>
+            <select id="customWordCategory"></select>
+          </label>
+          <div class="field">
+            <span>Record your voice</span>
+            <button type="button" class="btn-record" id="customWordRecordBtn">🎤 Record</button>
+          </div>
+          <button type="submit" class="btn-primary">Add my word</button>
+        </form>
+
+        <hr class="caregiver-only" hidden>
+        <h3 class="caregiver-only" hidden>Pending submissions <small>(local review)</small></h3>
+        <div id="pendingList" class="caregiver-only" hidden></div>
         <hr>
-        <h3>Pending submissions <small>(local review)</small></h3>
-        <div id="pendingList"></div>
+        <p class="muted">
+          <a href="./privacy.html" class="link-quiet">Privacy policy</a>
+          · Talk Board <span id="appVersion">v1.0</span>
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- First / Then schedule panel -->
+  <div class="panel" id="schedulePanel" hidden aria-hidden="true">
+    <div class="panel-inner panel-tall">
+      <div class="panel-head">
+        <h2 id="scheduleTitle">First / Then</h2>
+        <button class="icon-btn" id="scheduleClose" aria-label="Close">✕</button>
+      </div>
+      <div class="panel-body">
+        <p class="muted" id="scheduleHint">Pick a picture for First and for Then.</p>
+        <div class="sched-slots">
+          <button type="button" class="sched-slot" id="schedFirst" data-slot="first">
+            <span class="sched-step" id="schedFirstLbl">First</span>
+            <span class="sched-pic">＋</span>
+            <span class="sched-word"></span>
+          </button>
+          <span class="sched-arrow">→</span>
+          <button type="button" class="sched-slot" id="schedThen" data-slot="then">
+            <span class="sched-step" id="schedThenLbl">Then</span>
+            <span class="sched-pic">＋</span>
+            <span class="sched-word"></span>
+          </button>
+        </div>
+        <div class="sched-controls">
+          <button type="button" class="btn-primary" id="schedSpeak">🔊 <span id="schedSpeakLbl">Say</span></button>
+          <button type="button" class="btn-secondary" id="schedClear">Clear</button>
+        </div>
+        <div class="cats" id="schedCats"></div>
+        <div class="board sched-board" id="schedPicker"></div>
       </div>
     </div>
   </div>
@@ -93,12 +251,41 @@
           <span>Record audio (optional)</span>
           <button type="button" class="btn-record" id="contribRecordBtn">🎤 Record</button>
         </div>
-        <p class="muted">Submissions stay pending until approved. Approved words appear on the board for everyone using this device; online sharing comes in Phase 2.</p>
+
+        <!-- Online sharing (only shown when Supabase is configured) -->
+        <div class="field check" id="shareOnlineField" hidden>
+          <input type="checkbox" id="contribShareOnline">
+          <span id="shareOnlineLbl">Share with the community online</span>
+        </div>
+        <div class="contrib-auth" id="contribAuth" hidden>
+          <p class="muted" id="authStatus">Sign in to share recordings with everyone.</p>
+          <div class="row" id="signInRow">
+            <input type="email" id="contribEmail" placeholder="you@email.com" autocomplete="email">
+            <button type="button" class="btn-secondary" id="signInBtn">Send link</button>
+          </div>
+          <button type="button" class="btn-secondary" id="signOutBtn" hidden>Sign out</button>
+        </div>
+
+        <p class="muted">Submissions stay pending until approved. Approved words appear on the board for this device. When online sharing is set up and you sign in, contributions are reviewed by a moderator before going live for everyone.</p>
         <div class="panel-actions">
           <button type="button" class="btn-secondary" id="contributeClose2" onclick="document.getElementById('contributeClose').click()">Cancel</button>
           <button type="submit" class="btn-primary">Submit</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- Recording overlay (caregiver) -->
+  <div class="recording-overlay" id="recordingOverlay" hidden aria-hidden="true">
+    <div class="recording-box">
+      <div class="recording-pulse">🎤</div>
+      <p class="recording-label" id="recordingLabel">Recording…</p>
+      <p class="recording-lang muted" id="recordingLang"></p>
+      <p class="recording-timer" id="recordingTimer">0:00</p>
+      <div class="recording-actions">
+        <button type="button" class="btn-record-stop" id="recordingStopBtn">⏹ Stop</button>
+        <button type="button" class="btn-secondary" id="recordingCancelBtn">Cancel</button>
+      </div>
     </div>
   </div>
 
