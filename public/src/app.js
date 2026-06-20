@@ -10,7 +10,8 @@ import {
 import { initTTS, say, previewVoice, voicesForLocale, unlockAudio } from "./tts.js";
 import {
   initCommunity, mergeCommunityWords, submitWord, getPendingSubmissions,
-  approveSubmission, rejectSubmission, getCommunityAudio, syncShareQueue
+  approveSubmission, rejectSubmission, getCommunityAudio, syncShareQueue,
+  fetchOnlinePending, approveOnlineSubmission, rejectOnlineSubmission
 } from "./community.js";
 import { initSchedule, renderSchedule } from "./schedule.js";
 import {
@@ -340,8 +341,11 @@ const el = {
   voiceSelect: document.getElementById("voiceSelect"),
   settingsPanel: document.getElementById("settingsPanel"),
   contributePanel: document.getElementById("contributePanel"),
-  pendingList: document.getElementById("pendingList")
+  pendingList: document.getElementById("pendingList"),
+  pendingOnlineList: document.getElementById("pendingOnlineList")
 };
+
+let settingsTab = "general";
 
 /* ---------------- Render ---------------- */
 function applyChrome() {
@@ -356,6 +360,32 @@ function applyChrome() {
   applyCaregiverVisibility();
   renderLangIndicator();
   updateCaregiverAuthLabels();
+  updateSettingsPanelLabels();
+}
+
+function updateSettingsPanelLabels() {
+  const map = {
+    settingsPanelTitle: "settings",
+    settingsTabGeneralBtn: "settingsTabGeneral",
+    settingsTabPendingLbl: "settingsTabPending",
+    settingsTabAllCardsBtn: "settingsTabAllCards",
+    pendingWordsTitle: "pendingWordsTitle",
+    pendingWordsHint: "pendingWordsHint",
+    pendingLocalTitle: "pendingLocalTitle",
+    pendingOnlineTitle: "pendingOnlineTitle",
+    allCardsTitle: "allCardsTitle",
+    allCardsHint: "allCardsHint",
+    caregiverModeLbl: "caregiverMode",
+    exitCaregiverBtn: "exitCaregiver"
+  };
+  for (const [id, key] of Object.entries(map)) {
+    const node = document.getElementById(id);
+    if (node) node.textContent = t(key);
+  }
+  const exitBtn = document.getElementById("exitCaregiverBtn");
+  if (exitBtn) exitBtn.textContent = t("exitCaregiver");
+  const hint = document.getElementById("caregiverHint");
+  if (hint) hint.textContent = t("caregiverHint");
 }
 
 function updateCaregiverAuthLabels() {
@@ -684,40 +714,150 @@ function renderStrip() {
   el.strip.scrollLeft = rtl ? 0 : el.strip.scrollWidth;
 }
 
-function renderPendingQueue() {
+function getAllBoardWords() {
+  const all = [];
+  CATEGORIES.forEach(c => {
+    const words = mergeAllWords(WORDS[c.id] || [], c.id, settings.locale, state.dialect);
+    words.forEach(w => all.push({ word: w, categoryId: c.id }));
+  });
+  return all;
+}
+
+function switchSettingsTab(tab) {
+  settingsTab = tab;
+  ["general", "pending", "allcards"].forEach(name => {
+    const panel = document.getElementById(`settingsTab${name === "general" ? "General" : name === "pending" ? "Pending" : "AllCards"}`);
+    if (panel) panel.hidden = tab !== name;
+  });
+  document.querySelectorAll(".settings-tab").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.tab === tab);
+  });
+  const title = document.getElementById("settingsPanelTitle");
+  if (title) {
+    const titles = { general: "settings", pending: "settingsTabPending", allcards: "settingsTabAllCards" };
+    title.textContent = t(titles[tab] || "settings");
+  }
+  if (tab === "pending") renderPendingQueue();
+  if (tab === "allcards") renderAllCardsGrid();
+}
+
+function updatePendingBadge(count) {
+  const badge = document.getElementById("pendingBadge");
+  if (!badge) return;
+  if (count > 0) {
+    badge.textContent = String(count);
+    badge.hidden = false;
+  } else {
+    badge.hidden = true;
+  }
+}
+
+function renderPendingRow(item, { online = false, canModerate = true } = {}) {
+  const row = document.createElement("div");
+  row.className = "pending-row";
+  const actions = canModerate
+    ? `<span class="pending-actions">
+        <button type="button" class="btn-approve" data-id="${item.id}" data-online="${online ? "1" : ""}">${t("approve")}</button>
+        <button type="button" class="btn-reject" data-id="${item.id}" data-online="${online ? "1" : ""}">${t("reject")}</button>
+      </span>`
+    : `<span class="muted">${t("pendingNote")}</span>`;
+  row.innerHTML = `
+    <span>${item.emoji} <strong>${item.text}</strong>
+      <small>(${item.locale}${item.dialect ? ` / ${item.dialect}` : ""} · ${item.category})</small>
+    </span>
+    ${actions}`;
+  return row;
+}
+
+async function renderPendingQueue() {
   if (!el.pendingList) return;
   const pending = getPendingSubmissions();
   el.pendingList.innerHTML = "";
   if (!pending.length) {
-    el.pendingList.innerHTML = `<p class="muted">No pending submissions.</p>`;
-    return;
+    el.pendingList.innerHTML = `<p class="muted">${t("noPendingWords")}</p>`;
+  } else {
+    pending.forEach(item => el.pendingList.appendChild(renderPendingRow(item)));
   }
-  pending.forEach(item => {
-    const row = document.createElement("div");
-    row.className = "pending-row";
-    row.innerHTML = `
-      <span>${item.emoji} <strong>${item.text}</strong>
-        <small>(${item.locale}${item.dialect ? ` / ${item.dialect}` : ""} · ${item.category})</small>
-      </span>
-      <span class="pending-actions">
-        <button type="button" class="btn-approve" data-id="${item.id}">${t("approve")}</button>
-        <button type="button" class="btn-reject" data-id="${item.id}">${t("reject")}</button>
-      </span>`;
-    el.pendingList.appendChild(row);
-  });
-  el.pendingList.querySelectorAll(".btn-approve").forEach(btn => {
-    btn.onclick = () => {
-      approveSubmission(btn.dataset.id);
-      renderPendingQueue();
-      renderBoard();
-      toast(t("approved"));
-    };
-  });
-  el.pendingList.querySelectorAll(".btn-reject").forEach(btn => {
-    btn.onclick = () => {
-      rejectSubmission(btn.dataset.id);
-      renderPendingQueue();
-    };
+
+  let onlineCount = 0;
+  const onlineSection = document.getElementById("pendingOnlineSection");
+  const onlineHint = document.getElementById("pendingOnlineHint");
+  if (SUPABASE_READY && authUser && el.pendingOnlineList) {
+    try {
+      const { items, isAdmin } = await fetchOnlinePending();
+      onlineCount = items.length;
+      if (items.length) {
+        onlineSection.hidden = false;
+        onlineHint.textContent = isAdmin ? t("pendingOnlineHint") : t("pendingOnlineOwnHint");
+        el.pendingOnlineList.innerHTML = "";
+        items.forEach(item => {
+          el.pendingOnlineList.appendChild(renderPendingRow(item, { online: true, canModerate: isAdmin }));
+        });
+      } else {
+        onlineSection.hidden = true;
+        el.pendingOnlineList.innerHTML = "";
+      }
+    } catch {
+      onlineSection.hidden = true;
+    }
+  } else if (onlineSection) {
+    onlineSection.hidden = true;
+  }
+
+  updatePendingBadge(pending.length + onlineCount);
+
+  const bindActions = (root) => {
+    root.querySelectorAll(".btn-approve").forEach(btn => {
+      btn.onclick = async () => {
+        if (btn.dataset.online) {
+          const res = await approveOnlineSubmission(btn.dataset.id);
+          if (!res.ok) { toast(res.reason || t("uploadFailed")); return; }
+        } else {
+          approveSubmission(btn.dataset.id);
+          renderBoard();
+        }
+        toast(t("wordApproved"));
+        renderPendingQueue();
+      };
+    });
+    root.querySelectorAll(".btn-reject").forEach(btn => {
+      btn.onclick = async () => {
+        if (btn.dataset.online) {
+          await rejectOnlineSubmission(btn.dataset.id);
+        } else {
+          rejectSubmission(btn.dataset.id);
+        }
+        toast(t("wordRejected"));
+        renderPendingQueue();
+      };
+    });
+  };
+  bindActions(el.pendingList);
+  if (el.pendingOnlineList) bindActions(el.pendingOnlineList);
+}
+
+function renderAllCardsGrid() {
+  const grid = document.getElementById("allCardsGrid");
+  const countEl = document.getElementById("allCardsCount");
+  if (!grid) return;
+  const entries = getAllBoardWords();
+  const catIds = new Set(entries.map(e => e.categoryId));
+  if (countEl) {
+    countEl.textContent = t("allCardsCount")
+      .replace("{n}", String(entries.length))
+      .replace("{c}", String(catIds.size));
+  }
+  grid.innerHTML = "";
+  entries.forEach(({ word: w, categoryId }) => {
+    const cat = CATEGORIES.find(c => c.id === categoryId);
+    const catName = cat ? labelForCategory(cat, settings.locale, state.dialect) : categoryId;
+    const item = document.createElement("div");
+    item.className = "all-cards-item";
+    item.innerHTML = `
+      <div class="emoji">${w.emoji || "💬"}</div>
+      <span class="lbl">${labelForWord(w, settings.locale, state.dialect)}</span>
+      <span class="cat-tag">${catName}</span>`;
+    grid.appendChild(item);
   });
 }
 
@@ -752,8 +892,8 @@ document.getElementById("settingsBtn").onclick = () => {
     toast(t("caregiverHint"));
     return;
   }
-  renderPendingQueue();
   renderUsageStats();
+  switchSettingsTab(settingsTab || "general");
   openPanel(el.settingsPanel);
 };
 document.getElementById("settingsClose").onclick = () => closePanel(el.settingsPanel);
@@ -816,6 +956,17 @@ function applyCaregiverVisibility() {
   if (banner) banner.hidden = !on;
   document.getElementById("localebar")?.toggleAttribute("hidden", !on);
   document.getElementById("contributeBtn")?.toggleAttribute("hidden", !on);
+  const tabs = document.getElementById("settingsTabs");
+  if (tabs) tabs.hidden = !on;
+  if (on) {
+    renderPendingQueue().catch(() => {});
+    if (settingsTab === "allcards") renderAllCardsGrid();
+  } else {
+    settingsTab = "general";
+    document.getElementById("settingsTabGeneral")?.removeAttribute("hidden");
+    document.getElementById("settingsTabPending")?.setAttribute("hidden", "");
+    document.getElementById("settingsTabAllCards")?.setAttribute("hidden", "");
+  }
 }
 
 function enterCaregiverMode() {
@@ -823,6 +974,8 @@ function enterCaregiverMode() {
   applyChrome();
   refreshAll();
   renderUsageStats();
+  const pendingCount = getPendingSubmissions().length;
+  switchSettingsTab(pendingCount > 0 ? "pending" : "general");
   openPanel(el.settingsPanel);
   toast(t("caregiverMode"));
 }
@@ -892,6 +1045,10 @@ function setupCaregiverGate() {
     const pin = e.target.value.trim();
     settings = saveSettings({ caregiverPin: pin.length === 4 ? pin : null });
   };
+
+  document.querySelectorAll(".settings-tab").forEach(btn => {
+    btn.addEventListener("click", () => switchSettingsTab(btn.dataset.tab));
+  });
 }
 
 function renderSettingsLocaleSelects() {
@@ -1154,6 +1311,7 @@ function setupCaregiverAuth() {
       renderBoard();
       renderPersonalList();
       renderCustomWordsList();
+      renderPendingQueue().catch(() => {});
     } else {
       statusEl.textContent = t("accountHint");
       signInForm.hidden = false;

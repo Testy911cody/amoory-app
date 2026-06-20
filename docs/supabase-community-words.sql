@@ -54,6 +54,18 @@ create policy "Admins can review"
     )
   );
 
+-- Admins can read all pending words for the in-app moderation queue
+create policy "Admins can read pending"
+  on public.community_words for select
+  to authenticated
+  using (
+    status = 'pending'
+    and exists (
+      select 1 from public.profiles p
+      where p.id = auth.uid() and p.is_admin = true
+    )
+  );
+
 -- ---------------------------------------------------------------------------
 -- Storage bucket for contributed dialect recordings.
 -- The app uploads to `community-audio/<user_id>/<word_id>.webm`.

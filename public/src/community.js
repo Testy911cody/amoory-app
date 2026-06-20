@@ -233,6 +233,96 @@ export function rejectSubmission(id) {
   return item;
 }
 
+/** Check if the signed-in user is a community moderator (profiles.is_admin). */
+export async function checkIsAdmin() {
+  const supabase = await getSupabase();
+  if (!supabase) return false;
+  const user = await getCurrentUser();
+  if (!user) return false;
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("is_admin")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (error) return false;
+  return !!data?.is_admin;
+}
+
+/** Fetch pending community_words from Supabase (own submissions, or all if admin). */
+export async function fetchOnlinePending() {
+  const supabase = await getSupabase();
+  if (!supabase) return { items: [], isAdmin: false };
+  const user = await getCurrentUser();
+  if (!user) return { items: [], isAdmin: false };
+  const isAdmin = await checkIsAdmin();
+  let query = supabase
+    .from("community_words")
+    .select("id,text,category,emoji,locale,dialect,audio_url,status,submitted_by,created_at")
+    .eq("status", "pending")
+    .order("created_at", { ascending: true });
+  if (!isAdmin) query = query.eq("submitted_by", user.id);
+  const { data, error } = await query;
+  if (error) throw error;
+  return {
+    isAdmin,
+    items: (data || []).map(row => ({
+      id: row.id,
+      text: row.text,
+      category: row.category,
+      emoji: row.emoji || "💬",
+      locale: row.locale,
+      dialect: row.dialect || null,
+      hasAudio: !!row.audio_url,
+      audioUrl: row.audio_url || null,
+      submittedBy: row.submitted_by,
+      submittedAt: row.created_at,
+      source: "online"
+    }))
+  };
+}
+
+/** Admin: approve a pending online word (updates Supabase + refreshes local cache). */
+export async function approveOnlineSubmission(id) {
+  const supabase = await getSupabase();
+  if (!supabase) return { ok: false, reason: "not-configured" };
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, reason: "auth" };
+  const { data, error } = await supabase
+    .from("community_words")
+    .update({
+      status: "approved",
+      reviewed_by: user.id,
+      reviewed_at: new Date().toISOString()
+    })
+    .eq("id", id)
+    .eq("status", "pending")
+    .select("id,text,category,emoji,locale,dialect,audio_url")
+    .maybeSingle();
+  if (error) return { ok: false, reason: error.message };
+  if (!data) return { ok: false, reason: "not-found" };
+  try { await pullApprovedFromSupabase(); } catch { /* cache refresh optional */ }
+  return { ok: true, row: data };
+}
+
+/** Admin: reject a pending online word. */
+export async function rejectOnlineSubmission(id) {
+  const supabase = await getSupabase();
+  if (!supabase) return { ok: false, reason: "not-configured" };
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, reason: "auth" };
+  const { error } = await supabase
+    .from("community_words")
+    .update({
+      status: "rejected",
+      reviewed_by: user.id,
+      reviewed_at: new Date().toISOString()
+    })
+    .eq("id", id)
+    .eq("status", "pending");
+  if (error) return { ok: false, reason: error.message };
+  return { ok: true };
+}
+
 /** Merge approved community words into a category word list. */
 export function mergeCommunityWords(builtinWords, categoryId, localeCode, dialectId) {
   const approved = getApprovedWords(localeCode, dialectId)

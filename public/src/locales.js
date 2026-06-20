@@ -199,7 +199,22 @@ export const UI_STRINGS = {
     accountNotConfigured: "Account sign-up is not set up yet. Contact the app administrator.",
     accountConfirmNeeded: "Account created but not active. The administrator must disable email confirmation in Supabase (Auth → Providers → Email).",
     authLoading: "Please wait…",
-    authErrorTitle: "Could not sign in"
+    authErrorTitle: "Could not sign in",
+    settingsTabGeneral: "Settings",
+    settingsTabPending: "Pending words",
+    settingsTabAllCards: "All cards",
+    pendingWordsTitle: "Approve new words",
+    pendingWordsHint: "Tap Approve to add a word to the board on this device. Reject to discard it.",
+    pendingLocalTitle: "On this device",
+    pendingOnlineTitle: "Community library",
+    pendingOnlineHint: "Words shared online. Admins can approve them for everyone.",
+    pendingOnlineOwnHint: "Your submissions waiting for a moderator.",
+    noPendingWords: "No words waiting for approval.",
+    allCardsTitle: "All word cards",
+    allCardsHint: "Every word available on the board for the current language and dialect.",
+    allCardsCount: "{n} words across {c} categories",
+    wordApproved: "Word approved!",
+    wordRejected: "Word rejected."
   },
   ar: {
     title: "لوحة الكلام",
@@ -293,7 +308,22 @@ export const UI_STRINGS = {
     accountNotConfigured: "إنشاء الحساب غير متاح حالياً.",
     accountConfirmNeeded: "تم إنشاء الحساب لكنه غير مفعّل. يجب على المسؤول تعطيل تأكيد البريد في Supabase (Auth → Providers → Email).",
     authLoading: "انتظر…",
-    authErrorTitle: "تعذّر تسجيل الدخول"
+    authErrorTitle: "تعذّر تسجيل الدخول",
+    settingsTabGeneral: "الإعدادات",
+    settingsTabPending: "كلمات للموافقة",
+    settingsTabAllCards: "كل البطاقات",
+    pendingWordsTitle: "وافق على كلمات جديدة",
+    pendingWordsHint: "اضغط «موافقة» لإضافة الكلمة للوحة على هذا الجهاز. «رفض» لحذفها.",
+    pendingLocalTitle: "على هذا الجهاز",
+    pendingOnlineTitle: "مكتبة المجتمع",
+    pendingOnlineHint: "كلمات مشتركة أونلاين. المسؤول يوافق عليها للجميع.",
+    pendingOnlineOwnHint: "مساهماتك بانتظار مراجعة المسؤول.",
+    noPendingWords: "ما في كلمات بانتظار الموافقة.",
+    allCardsTitle: "كل بطاقات الكلمات",
+    allCardsHint: "كل الكلمات المتاحة على اللوحة للغة واللهجة الحالية.",
+    allCardsCount: "{n} كلمة في {c} فئات",
+    wordApproved: "تمت الموافقة!",
+    wordRejected: "تم الرفض."
   }
 };
 

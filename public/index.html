@@ -37,12 +37,12 @@
 </head>
 <body class="kid-mode">
   <div class="topbar">
+    <button class="icon-btn topbar-corner" id="settingsBtn" title="Settings (hold for caregiver)">⚙️</button>
     <div class="title" id="appTitle">Talk Board</div>
     <span id="langIndicator" class="lang-chip" aria-live="polite" title="Current speak language"></span>
     <div class="topbar-actions">
       <button class="icon-btn" id="scheduleBtn" title="First / Then">📅</button>
       <button class="icon-btn caregiver-only" id="contributeBtn" title="Suggest a word" hidden>➕</button>
-      <button class="icon-btn" id="settingsBtn" title="Settings (hold for caregiver)">⚙️</button>
     </div>
   </div>
 
@@ -67,9 +67,17 @@
   <div class="panel" id="settingsPanel" hidden aria-hidden="true">
     <div class="panel-inner">
       <div class="panel-head">
-        <h2>Settings</h2>
+        <h2 id="settingsPanelTitle">Settings</h2>
         <button class="icon-btn" id="settingsClose" aria-label="Close">✕</button>
       </div>
+      <nav class="settings-tabs caregiver-only" id="settingsTabs" hidden aria-label="Caregiver sections">
+        <button type="button" class="settings-tab active" data-tab="general" id="settingsTabGeneralBtn">Settings</button>
+        <button type="button" class="settings-tab" data-tab="pending" id="settingsTabPendingBtn">
+          <span class="settings-tab-label" id="settingsTabPendingLbl">Pending words</span>
+          <span class="settings-tab-badge" id="pendingBadge" hidden>0</span>
+        </button>
+        <button type="button" class="settings-tab" data-tab="allcards" id="settingsTabAllCardsBtn">All cards</button>
+      </nav>
       <div class="panel-body">
         <div class="caregiver-banner" id="caregiverBanner" hidden>
           <p><strong id="caregiverModeLbl">Caregiver mode</strong></p>
@@ -77,6 +85,27 @@
         </div>
         <p class="muted caregiver-only" id="caregiverHint" hidden>Hold ⚙️ for 2 seconds to open caregiver settings.</p>
 
+        <div class="settings-tab-panel" id="settingsTabPending" hidden>
+          <h3 id="pendingWordsTitle">Approve new words</h3>
+          <p class="muted" id="pendingWordsHint">Review words waiting for approval on this device.</p>
+          <h4 class="subsection" id="pendingLocalTitle">On this device</h4>
+          <div id="pendingList"></div>
+          <div id="pendingOnlineSection" hidden>
+            <hr>
+            <h4 class="subsection" id="pendingOnlineTitle">Community library</h4>
+            <p class="muted" id="pendingOnlineHint"></p>
+            <div id="pendingOnlineList"></div>
+          </div>
+        </div>
+
+        <div class="settings-tab-panel" id="settingsTabAllCards" hidden>
+          <h3 id="allCardsTitle">All word cards</h3>
+          <p class="muted" id="allCardsHint">Every word on the board for the current language.</p>
+          <p class="muted" id="allCardsCount"></p>
+          <div class="all-cards-grid" id="allCardsGrid"></div>
+        </div>
+
+        <div class="settings-tab-panel" id="settingsTabGeneral">
         <div class="caregiver-only" id="caregiverLang" hidden>
           <label class="field">
             <span>Language</span>
@@ -193,14 +222,12 @@
           <button type="submit" class="btn-primary">Add my word</button>
         </form>
 
-        <hr class="caregiver-only" hidden>
-        <h3 class="caregiver-only" hidden>Pending submissions <small>(local review)</small></h3>
-        <div id="pendingList" class="caregiver-only" hidden></div>
         <hr>
         <p class="muted">
           <a href="./privacy.html" class="link-quiet">Privacy policy</a>
           · Talk Board <span id="appVersion">v1.0</span>
         </p>
+        </div><!-- /settingsTabGeneral -->
       </div>
     </div>
   </div>
