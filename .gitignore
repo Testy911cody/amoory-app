@@ -6,5 +6,4 @@ dist/
 Thumbs.db
 *.log
 ios/
-android/
 .capacitor/

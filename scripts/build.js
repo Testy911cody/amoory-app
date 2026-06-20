@@ -8,6 +8,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import esbuild from "esbuild";
 import { injectConfig } from "./inject-config.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -50,14 +51,34 @@ function copyDir(src, dest) {
   }
 }
 
-function main() {
+async function bundleNativeShell(dest) {
+  const entry = path.join(root, "scripts", "native-shell.js");
+  const outfile = path.join(dest, "src", "native.js");
+  await esbuild.build({
+    entryPoints: [entry],
+    outfile,
+    bundle: true,
+    format: "esm",
+    platform: "browser",
+    target: ["es2020"],
+    minify: true,
+    logLevel: "silent"
+  });
+  console.log("✓ bundled native shell → dist/src/native.js");
+}
+
+async function main() {
   loadDotEnvLocal();
   injectConfig(root);
   const src = path.join(root, "public");
   const dest = path.join(root, "dist");
   rimraf(dest);
   copyDir(src, dest);
+  await bundleNativeShell(dest);
   console.log(`Talk Board build ready → dist/ (${dest})`);
 }
 
-main();
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

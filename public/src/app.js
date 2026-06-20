@@ -34,6 +34,7 @@ import {
   setCardOrderForView
 } from "./usage.js";
 import { moderateWordEntry, logModerationRejection } from "./moderation.js";
+import { initNativeShell } from "./native.js";
 
 /* ---------------- Toast ---------------- */
 function toast(msg) {
@@ -1638,6 +1639,7 @@ function bootUI() {
 
 (async function init() {
   initTTS();
+  initNativeShell().catch(() => {});
   bootUI();
   try {
     authUser = await getCurrentUser();

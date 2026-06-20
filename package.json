@@ -9,6 +9,8 @@
     "build": "node scripts/build.js",
     "icons": "node scripts/generate-icons.js",
     "build:all": "npm run icons && npm run build",
+    "assets:android": "npx @capacitor/assets generate --android",
+    "assets:ios": "npx @capacitor/assets generate --ios",
     "env:from-housegames": "node scripts/copy-env-from-housegames.js",
     "cap:add:ios": "npx cap add ios",
     "cap:add:android": "npx cap add android",
@@ -17,13 +19,18 @@
     "cap:open:android": "npx cap open android"
   },
   "dependencies": {
+    "@capacitor/app": "^8.0.0",
+    "@capacitor/splash-screen": "^8.0.0",
+    "@capacitor/status-bar": "^8.0.0",
     "@supabase/supabase-js": "^2.45.0"
   },
   "devDependencies": {
     "@capacitor/android": "^8.0.0",
+    "@capacitor/assets": "^3.0.5",
     "@capacitor/cli": "^8.0.0",
     "@capacitor/core": "^8.0.0",
     "@capacitor/ios": "^8.0.0",
+    "esbuild": "^0.25.0",
     "serve": "^14.2.0",
     "sharp": "^0.35.2",
     "typescript": "^6.0.3"

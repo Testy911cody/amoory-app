@@ -6,134 +6,117 @@ What is **done in the repo** vs what **you must do** before App Store / Play Sto
 
 ## Done in repo
 
-- [x] PWA with offline service worker (`public/sw.js`)
+- [x] PWA with offline service worker (`public/sw.js` → copied to `dist/sw.js`)
 - [x] PWA manifest + icons (192, 512, maskable, apple-touch)
-- [x] Privacy policy page (`public/privacy.html`) — **replace `CONTACT_EMAIL_HERE` before publish**
+- [x] Privacy policy (`public/privacy.html`) — contact: **test911code@gmail.com**
+- [x] In-app privacy link in caregiver settings (`public/index.html`)
 - [x] Capacitor 8 config (`capacitor.config.ts`, app id `com.talkboard.app`)
+- [x] Capacitor plugins: Splash Screen, Status Bar, App (back button)
+- [x] Native shell bundle (`scripts/native-shell.js` → `dist/src/native.js` on build)
 - [x] Source assets for store icons (`assets/icon.png`, splash screens)
+- [x] Icon generator (`npm run icons`) + Android asset generator (`npm run assets:android`)
+- [x] Android project (`android/`) with INTERNET + RECORD_AUDIO permissions
 - [x] GitHub Pages deploy workflow (`.github/workflows/deploy.yml`)
 - [x] Firebase Hosting config (`firebase.json`)
-- [x] Kid-first autism-priority UI with caregiver mode
-- [x] First/Then visual schedule
-- [x] Supabase community word schema + upload wiring (needs your keys)
+- [x] Cloudflare Pages config (`wrangler.toml`)
+- [x] Store docs: `docs/STORE_LISTING.md`, `docs/ANDROID_RELEASE.md`, `docs/IOS_RELEASE.md`
+- [x] Kid-first UI, First/Then schedule, Supabase community wiring
+- [x] Version **1.0.0** in `package.json`
+- [x] Env copy script: `npm run env:from-housegames`
 
 ---
 
-## Website deploy (free)
+## You must do (manual)
 
-### GitHub Pages
-1. Push repo to GitHub
-2. Settings → Pages → Source: **GitHub Actions**
-3. Optional secrets: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
-4. Push to `main` — workflow deploys `dist/` automatically
-
-```bash
-npm run build
-# or with icons: npm run build:all
-```
-
-### Firebase Hosting
-1. `npx firebase login`
-2. Edit `.firebaserc` → set your Firebase project id
-3. `npm run build && npx firebase deploy --only hosting`
-
----
-
-## Android (Windows OK)
-
-```bash
-npm run build
-npm run cap:add:android    # once
-npm run cap:sync
-npm run cap:open:android   # Android Studio
-```
-
-### You must provide
+### Accounts & fees
 - [ ] Google Play Developer account (**$25 one-time**)
-- [ ] App signing keystore (Android Studio → Generate signed bundle)
-- [ ] Store listing: title, short/full description, screenshots (phone + tablet)
-- [ ] Privacy policy URL (host at your deployed site `/privacy.html`)
-- [ ] Content rating questionnaire (IARC via Play Console)
-- [ ] Target audience: designed for children — declare in Play Console
+- [ ] Apple Developer account (**$99/year**) — Mac + Xcode required for iOS build
 
-### Recommended before submit
-```bash
-npm run icons
-npx @capacitor/assets generate --android   # if @capacitor/assets installed
-npm run cap:sync
-```
+### Android (Windows OK)
+- [ ] Create release keystore and sign AAB (see `docs/ANDROID_RELEASE.md`)
+- [ ] Upload AAB to Play Console
+- [ ] Complete store listing (paste from `docs/STORE_LISTING.md`)
+- [ ] Content rating (IARC) + target audience (children)
+- [ ] Real-device QA: mic, TTS, offline, caregiver mode
+
+### iOS (Mac only)
+- [ ] On Mac: `npm run cap:add:ios`, `npm run assets:ios`, `npm run cap:sync`
+- [ ] Add `NSMicrophoneUsageDescription` to Info.plist (see `docs/IOS_RELEASE.md`)
+- [ ] Archive in Xcode → upload to App Store Connect
+- [ ] Screenshots + App Privacy questionnaire
+
+### Deploy / hosting
+- [ ] Push to GitHub; enable Pages (Actions source) if using standalone URL
+- [ ] Optional GitHub secrets: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
+- [ ] Production privacy URL live: https://housegames.club/amoory/privacy.html
+- [ ] Run `docs/supabase-community-words.sql` in Supabase (once)
+- [ ] Supabase auth redirect URLs: `https://housegames.club/amoory/`, `http://localhost:3001/amoory/`
 
 ---
 
-## iOS (requires Mac + Xcode)
+## Quick commands
 
-```bash
-npm run build
-npm run cap:add:ios        # on Mac only
+```powershell
+# Full web + icon build
+npm run env:from-housegames
+npm run build:all
+
+# Android (Windows)
+npm run cap:sync
+npm run cap:open:android
+
+# iOS (Mac only — do not run on Windows)
+npm run cap:add:ios
+npm run assets:ios
 npm run cap:sync
 npm run cap:open:ios
 ```
 
-### You must provide
-- [ ] Apple Developer account (**$99/year**)
-- [ ] Mac with Xcode 15+
-- [ ] App Store Connect app record
-- [ ] Screenshots for required device sizes
-- [ ] Privacy policy URL
-- [ ] App Privacy details (no tracking; local storage + optional Supabase)
-
 ---
 
-## Supabase (community words online)
+## Website deploy
 
-Uses the **same Supabase project as House Games**. Keys live in `HouseGames/.env.local`.
+### GitHub Pages
+1. Push to `main` — workflow builds and deploys `dist/`
+2. Settings → Pages → Source: **GitHub Actions**
 
-1. Run `AmooryApp/docs/supabase-community-words.sql` in Supabase SQL Editor (once).
-2. AmooryApp: `npm run env:from-housegames` then `npm run build`
-3. Auth redirect URLs: `https://housegames.club/amoory/`, `http://localhost:3001/amoory/`
-4. Privacy contact: test911code@gmail.com
-
----
-
-## Store metadata drafts
-
-**App name:** Talk Board  
-**Subtitle:** Picture communication for kids  
-**Short description:** Tap pictures to speak. Free AAC app for nonspeaking children, with community dialect voices.  
-**Keywords:** AAC, autism, communication, speech, picture board, nonspeaking, Sudanese Arabic  
-**Category:** Education / Medical (Accessibility)
-
----
-
-## House Games integration
-
-Source lives here; House Games publishes a copy at `/amoory/`. If you have the HouseGames repo locally:
-
+### Firebase Hosting
 ```bash
-npm run sync:amoory   # from HouseGames repo
+npm run build && npx firebase deploy --only hosting
 ```
 
-If not local, deploy this app standalone or via GitHub Pages / Firebase.
-
----
-
-## Free tier limits (plan ahead)
-
-| Service | Free tier | When you pay |
-|---------|-----------|--------------|
-| Supabase | 500 MB DB, 1 GB storage, 50k MAU | More storage/users |
-| GitHub Pages | Public repos, 1 GB site | Private repo needs paid plan |
-| Firebase Hosting | 10 GB/month transfer | High traffic |
+### House Games (primary production path)
+Talk Board at **https://housegames.club/amoory/** via HouseGames sync.
 
 ---
 
 ## Pre-submit test checklist
 
 - [ ] `npm run build` succeeds
-- [ ] Works offline after first load
-- [ ] Microphone recording works on real device
-- [ ] TTS works (install voice pack if needed on Android)
+- [ ] `dist/privacy.html` present; email is test911code@gmail.com
+- [ ] `dist/sw.js` present — works offline after first load
+- [ ] Microphone recording on real Android device
+- [ ] TTS works (install voice pack on Android if needed)
 - [ ] Caregiver mode: hold ⚙️ 2 seconds
 - [ ] First/Then schedule works
-- [ ] Privacy policy email updated
-- [ ] No placeholder Supabase keys in production build (or app gracefully degrades)
+- [ ] No placeholder Supabase keys in production (or graceful offline degrade)
+
+---
+
+## Doc index
+
+| Document | Purpose |
+|----------|---------|
+| `docs/STORE_LISTING.md` | Titles, descriptions, keywords, privacy answers |
+| `docs/ANDROID_RELEASE.md` | Keystore, AAB, Play Console steps |
+| `docs/IOS_RELEASE.md` | Xcode, Info.plist, App Store Connect |
+
+---
+
+## Free tier limits
+
+| Service | Free tier | When you pay |
+|---------|-----------|--------------|
+| Supabase | 500 MB DB, 1 GB storage, 50k MAU | More storage/users |
+| GitHub Pages | Public repos | Private repo needs paid plan |
+| Firebase Hosting | 10 GB/month transfer | High traffic |
