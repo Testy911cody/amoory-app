@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Talk Board · لوحة الكلام</title>
+<style>
+  :root{
+    --bg:#F2F6F8;--ink:#1E3A45;--soft:#5B7886;--line:#D7E3E8;--card:#FFFFFF;
+    --accent:#2E8C8C;--shadow:0 2px 8px rgba(30,58,69,.08);
+    --c-people:#E8A03D;--c-feelings:#D9695A;--c-food:#5BAA6F;
+    --c-do:#5B86C4;--c-need:#9C6FB0;--c-place:#3FA3A3;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;height:100%;}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,"Tahoma",sans-serif;
+    background:var(--bg);color:var(--ink);display:flex;flex-direction:column;height:100dvh;overflow:hidden;}
+  .topbar{display:flex;align-items:center;gap:8px;padding:8px 12px;background:#fff;
+    border-bottom:1px solid var(--line);flex-shrink:0;}
+  .title{font-size:16px;font-weight:800;flex:1;}
+  .langtoggle{display:flex;background:var(--bg);border-radius:30px;padding:3px;gap:2px;}
+  .langtoggle button{border:none;background:transparent;border-radius:26px;padding:7px 14px;
+    font-size:14px;font-weight:800;color:var(--soft);cursor:pointer;}
+  .langtoggle button[aria-pressed="true"]{background:var(--accent);color:#fff;}
+  .strip{background:#fff;border-bottom:2px solid var(--line);padding:10px 12px;display:flex;
+    align-items:center;gap:10px;min-height:92px;flex-shrink:0;}
+  .strip-cards{flex:1;display:flex;gap:8px;overflow-x:auto;align-items:center;min-height:72px;}
+  .strip-cards:empty::after{content:attr(data-hint);color:var(--soft);font-size:15px;font-weight:600;padding:0 6px;}
+  .chip{flex:0 0 auto;width:66px;text-align:center;background:var(--card);border:2px solid var(--line);
+    border-radius:14px;padding:6px 4px 4px;animation:pop .18s ease;}
+  .chip .emoji{font-size:30px;line-height:1;}
+  .chip .lbl{font-size:11px;font-weight:700;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  @keyframes pop{from{transform:scale(.6);opacity:0;}to{transform:scale(1);opacity:1;}}
+  .strip-btn{flex:0 0 auto;border:none;border-radius:16px;width:60px;height:60px;font-size:12px;
+    font-weight:800;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer;}
+  .strip-btn .ic{font-size:23px;line-height:1;}
+  .speak{background:var(--accent);color:#fff;width:76px;}
+  .clear{background:#F0E4E2;color:#B5503F;}
+  .back{background:#EAEFF1;color:var(--soft);}
+  .cats{display:flex;gap:8px;padding:10px 12px 4px;overflow-x:auto;flex-shrink:0;}
+  .cat{flex:0 0 auto;border:2px solid transparent;background:var(--card);border-radius:30px;padding:8px 16px;
+    font-size:15px;font-weight:800;color:var(--soft);cursor:pointer;box-shadow:var(--shadow);
+    display:flex;align-items:center;gap:6px;white-space:nowrap;}
+  .cat .dot{width:12px;height:12px;border-radius:50%;}
+  .cat[aria-selected="true"]{color:var(--ink);border-color:currentColor;}
+  .board{flex:1;overflow-y:auto;padding:8px 12px 24px;display:grid;
+    grid-template-columns:repeat(auto-fill,minmax(108px,1fr));gap:10px;align-content:start;}
+  .word{background:var(--card);border:3px solid var(--line);border-radius:20px;padding:12px 6px 10px;
+    display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;box-shadow:var(--shadow);
+    transition:transform .08s ease;min-height:124px;justify-content:center;}
+  .word:active{transform:scale(.94);}
+  .word .emoji{font-size:46px;line-height:1;}
+  .word .lbl{font-size:16px;font-weight:800;text-align:center;line-height:1.15;}
+  .word .lbl.sub{font-size:13px;font-weight:600;color:var(--soft);}
+  body[dir="rtl"] .word .lbl{font-size:18px;}
+  /* card becomes a relative container so the mic sits in a corner */
+  .word{position:relative;}
+  .mic{
+    position:absolute;top:6px;right:6px;width:34px;height:34px;border-radius:50%;
+    border:none;background:var(--bg);color:var(--soft);font-size:16px;line-height:1;
+    display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:2;
+  }
+  body[dir="rtl"] .mic{right:auto;left:6px;}
+  .word.has-rec .mic{background:#E0F0EF;color:var(--accent);}
+  .word.recording{border-color:#D9695A!important;}
+  .word.recording .mic{background:#D9695A;color:#fff;animation:pulse .9s infinite;}
+  @keyframes pulse{0%,100%{transform:scale(1);}50%{transform:scale(1.18);}}
+  .word .reciic{position:absolute;bottom:6px;right:8px;font-size:13px;color:var(--accent);}
+  body[dir="rtl"] .word .reciic{right:auto;left:8px;}
+  @media (min-width:600px){.board{grid-template-columns:repeat(auto-fill,minmax(132px,1fr));}.word .emoji{font-size:54px;}}
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="title" id="appTitle">Talk Board</div>
+    <div class="langtoggle" id="langToggle">
+      <button data-lang="en" aria-pressed="true">EN</button>
+      <button data-lang="ar" aria-pressed="false">ع</button>
+      <button data-lang="both" aria-pressed="false">EN/ع</button>
+    </div>
+  </div>
+  <div class="strip">
+    <div class="strip-cards" id="strip"></div>
+    <button class="strip-btn back" id="backBtn"><span class="ic">⌫</span></button>
+    <button class="strip-btn clear" id="clearBtn"><span class="ic">🗑</span></button>
+    <button class="strip-btn speak" id="speakBtn"><span class="ic">🔊</span><span id="sayLbl">Say</span></button>
+  </div>
+  <div class="cats" id="cats"></div>
+  <div class="board" id="board"></div>
+<script>
+const CATEGORIES = [
+  { id:"people",   en:"People",   ar:"ناس",   color:"var(--c-people)" },
+  { id:"feelings", en:"Feelings", ar:"إحساس", color:"var(--c-feelings)" },
+  { id:"food",     en:"Food",     ar:"أكل",   color:"var(--c-food)" },
+  { id:"do",       en:"Actions",  ar:"أفعال", color:"var(--c-do)" },
+  { id:"need",     en:"I want",   ar:"عايز",  color:"var(--c-need)" },
+  { id:"place",    en:"Places",   ar:"أماكن", color:"var(--c-place)" },
+];
+const WORDS = {
+  people:[["👦","I","أنا"],["🧑","you","إنت"],["👩","mom","ماما"],["👨","dad","بابا"],
+    ["👵","grandma","تيتة"],["👴","grandpa","جدو"],["🧑‍🏫","teacher","مدرّس"],["👶","baby","بيبي"],
+    ["🧑‍🤝‍🧑","friend","صاحب"],["🐕","dog","كلب"],["🐈","cat","قطة"]],
+  feelings:[["😊","happy","مبسوط"],["😢","sad","زعلان"],["😠","angry","غضبان"],["😨","scared","خايف"],
+    ["😴","tired","تعبان"],["🤕","hurt","بوجعني"],["😖","upset","متضايق"],["😍","love","بحب"],
+    ["😐","okay","تمام"],["🤗","hug","حضن"],["👍","yes","أيوة"],["👎","no","لأ"]],
+  food:[["🍎","apple","تفاحة"],["🍌","banana","موزة"],["🍓","strawberry","فراولة"],["🥛","milk","لبن"],
+    ["💧","water","ميّة"],["🍪","cookie","بسكوت"],["🍞","bread","عيش"],["🧀","cheese","جبنة"],
+    ["🍕","pizza","بيتزا"],["🍝","pasta","مكرونة"],["🥕","carrot","جزر"],["🍦","ice cream","آيس كريم"],
+    ["🧃","juice","عصير"],["🥪","sandwich","ساندويتش"]],
+  do:[["🍽️","eat","آكل"],["🥤","drink","أشرب"],["😴","sleep","أنام"],["▶️","play","ألعب"],
+    ["🚶","walk","أمشي"],["🏃","run","أجري"],["📖","read","أقرا"],["🎵","music","موسيقى"],
+    ["🛁","bath","حمّام"],["🚽","toilet","تواليت"],["✋","stop","قف"],["👋","go","يلا"],
+    ["👀","look","بُص"],["👂","listen","اسمع"],["✏️","draw","أرسم"],["🧼","wash","أغسل"]],
+  need:[["🙏","please","لو سمحت"],["🤲","help","ساعدني"],["➕","more","كمان"],["✅","all done","خلصت"],
+    ["🚻","bathroom","الحمّام"],["🤒","not well","تعبان"],["🔁","again","تاني"],["⏸️","break","راحة"],
+    ["🫂","comfort","طمّني"],["🤐","quiet","هدوء"],["🎁","want this","عايز ده"]],
+  place:[["🏠","home","البيت"],["🏫","school","المدرسة"],["🏞️","park","الجنينة"],["🛒","store","السوبر ماركت"],
+    ["🛏️","bedroom","أوضة النوم"],["🚗","car","العربية"],["🏥","doctor","الدكتور"],["🍴","kitchen","المطبخ"],
+    ["🏖️","outside","بَرّه"],["🛝","playground","الملعب"]],
+};
+const UI = {
+  en:{ title:"Talk Board", say:"Say", hint:"Tap pictures to build a sentence" },
+  ar:{ title:"لوحة الكلام", say:"قول", hint:"دوس على الصور عشان تكوّن جملة" },
+  both:{ title:"Talk Board · لوحة الكلام", say:"Say", hint:"Tap pictures · دوس على الصور" },
+};
+let voices=[];
+let warnedNoArabic=false;
+function loadVoices(){ voices = speechSynthesis.getVoices() || []; }
+if('speechSynthesis' in window){
+  loadVoices();
+  speechSynthesis.onvoiceschanged = loadVoices;
+  // Some devices need a nudge before voices appear
+  setTimeout(loadVoices, 250);
+  setTimeout(loadVoices, 1000);
+}
+function voiceFor(lc){
+  if(!voices.length) loadVoices();
+  if(lc==='ar'){
+    return voices.find(v=>/ar[-_]EG/i.test(v.lang)) ||   // Egyptian
+           voices.find(v=>/^ar\b/i.test(v.lang)) ||       // ar-…
+           voices.find(v=>/^ar/i.test(v.lang)) ||         // any ar
+           voices.find(v=>/arab/i.test(v.name)) || null;  // by name
+  }
+  return voices.find(v=>/en[-_]US/i.test(v.lang)) ||
+         voices.find(v=>/^en/i.test(v.lang)) || null;
+}
+function showToast(msg){
+  let t=document.getElementById("toast");
+  if(!t){
+    t=document.createElement("div"); t.id="toast";
+    t.style.cssText="position:fixed;left:50%;bottom:24px;transform:translateX(-50%);"
+      +"background:#1E3A45;color:#fff;padding:12px 18px;border-radius:14px;font-size:14px;"
+      +"font-weight:600;max-width:88%;text-align:center;z-index:99;box-shadow:0 6px 20px rgba(0,0,0,.25);";
+    document.body.appendChild(t);
+  }
+  t.textContent=msg; t.style.opacity="1";
+  clearTimeout(t._h); t._h=setTimeout(()=>{ t.style.opacity="0"; }, 5000);
+}
+function say(text, lc){
+  if(!('speechSynthesis' in window)){ showToast("This device can't read words aloud."); return; }
+  // make sure voices are loaded
+  if(!voices.length) loadVoices();
+  const v = voiceFor(lc);
+  if(lc==='ar' && !v && !warnedNoArabic){
+    warnedNoArabic=true;
+    showToast("No Arabic voice is installed on this device. Add one in Settings → Accessibility → Spoken Content → Voices → Arabic, then reopen.");
+  }
+  speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(text);
+  if(v) u.voice=v;
+  u.lang = (lc==='ar') ? (v ? v.lang : 'ar-EG') : (v ? v.lang : 'en-US');
+  u.rate=.82; u.pitch=1.05;
+  // tiny delay helps iOS actually fire after cancel()
+  setTimeout(()=>speechSynthesis.speak(u), 30);
+}
+
+/* ---------------- Recorded-voice storage (IndexedDB) ----------------
+   Each word gets a stable key (its English label). We store the
+   recorded audio blob under that key so it survives app restarts. */
+let db=null;
+function openDB(){
+  return new Promise((res,rej)=>{
+    const r=indexedDB.open("talkboard",1);
+    r.onupgradeneeded=e=>{ e.target.result.createObjectStore("recordings"); };
+    r.onsuccess=e=>{ db=e.target.result; res(db); };
+    r.onerror=e=>rej(e);
+  });
+}
+function recKey(it){ return it[1]; } // english label = stable id per word
+function saveRec(key, blob){
+  return new Promise((res,rej)=>{
+    const tx=db.transaction("recordings","readwrite");
+    tx.objectStore("recordings").put(blob, key);
+    tx.oncomplete=()=>res(); tx.onerror=e=>rej(e);
+  });
+}
+function getRec(key){
+  return new Promise((res)=>{
+    if(!db){ res(null); return; }
+    const tx=db.transaction("recordings","readonly");
+    const rq=tx.objectStore("recordings").get(key);
+    rq.onsuccess=()=>res(rq.result||null); rq.onerror=()=>res(null);
+  });
+}
+function deleteRec(key){
+  return new Promise((res)=>{
+    const tx=db.transaction("recordings","readwrite");
+    tx.objectStore("recordings").delete(key);
+    tx.oncomplete=()=>res(); tx.onerror=()=>res();
+  });
+}
+let recordedKeys=new Set();
+async function loadRecordedKeys(){
+  if(!db) return;
+  return new Promise(res=>{
+    const tx=db.transaction("recordings","readonly");
+    const rq=tx.objectStore("recordings").getAllKeys();
+    rq.onsuccess=()=>{ recordedKeys=new Set(rq.result||[]); res(); };
+    rq.onerror=()=>res();
+  });
+}
+function playRec(blob){
+  const url=URL.createObjectURL(blob);
+  const a=new Audio(url);
+  a.onended=()=>URL.revokeObjectURL(url);
+  a.play().catch(()=>{});
+}
+
+/* ---- recording with the device microphone ---- */
+let mediaRec=null, recChunks=[], recordingKey=null;
+async function toggleRecord(it, cardEl){
+  // stop if already recording this card
+  if(mediaRec && mediaRec.state==="recording"){
+    mediaRec.stop(); return;
+  }
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    showToast("This device can't record audio in the browser."); return;
+  }
+  let stream;
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({audio:true});
+  }catch(err){
+    showToast("Microphone blocked. Allow microphone access for this page, then try again.");
+    return;
+  }
+  recChunks=[]; recordingKey=recKey(it);
+  mediaRec=new MediaRecorder(stream);
+  mediaRec.ondataavailable=e=>{ if(e.data.size>0) recChunks.push(e.data); };
+  mediaRec.onstop=async()=>{
+    stream.getTracks().forEach(t=>t.stop());
+    const blob=new Blob(recChunks,{type: mediaRec.mimeType||"audio/webm"});
+    await saveRec(recordingKey, blob);
+    recordedKeys.add(recordingKey);
+    cardEl.classList.remove("recording");
+    cardEl.classList.add("has-rec");
+    if(!cardEl.querySelector(".reciic")){
+      const tick=document.createElement("span");
+      tick.className="reciic"; tick.textContent="🎙️"; cardEl.appendChild(tick);
+    }
+    playRec(blob); // play back so you hear what saved
+    showToast("Saved your voice for this word.");
+  };
+  cardEl.classList.add("recording");
+  mediaRec.start();
+  showToast("Recording… tap the mic again to stop.");
+}
+let lang="en", speakLang="en", current=CATEGORIES[0].id, sentence=[];
+const catsEl=document.getElementById("cats"), boardEl=document.getElementById("board"),
+  stripEl=document.getElementById("strip"), titleEl=document.getElementById("appTitle"),
+  sayLblEl=document.getElementById("sayLbl");
+function applyLangChrome(){
+  const u=UI[lang]; titleEl.textContent=u.title; sayLblEl.textContent=u.say;
+  stripEl.setAttribute("data-hint",u.hint);
+  document.body.setAttribute("dir", lang==="ar"?"rtl":"ltr");
+  speakLang = (lang==="ar")?"ar":"en";
+}
+function labelFor(it){
+  if(lang==="en") return `<span class="lbl">${it[1]}</span>`;
+  if(lang==="ar") return `<span class="lbl">${it[2]}</span>`;
+  return `<span class="lbl">${it[1]}</span><span class="lbl sub">${it[2]}</span>`;
+}
+function chipLabel(it){ return lang==="ar"?it[2]:it[1]; }
+function renderCats(){
+  catsEl.innerHTML="";
+  CATEGORIES.forEach(c=>{
+    const b=document.createElement("button"); b.className="cat";
+    b.setAttribute("aria-selected", c.id===current);
+    const name = lang==="ar"?c.ar:(lang==="both"?`${c.en} · ${c.ar}`:c.en);
+    b.innerHTML=`<span class="dot" style="background:${c.color}"></span>${name}`;
+    b.onclick=()=>{ current=c.id; renderCats(); renderBoard(); };
+    catsEl.appendChild(b);
+  });
+}
+function renderBoard(){
+  boardEl.innerHTML="";
+  const color=CATEGORIES.find(c=>c.id===current).color;
+  WORDS[current].forEach(it=>{
+    const key=recKey(it);
+    const w=document.createElement("button"); w.className="word"; w.style.borderColor=color;
+    if(recordedKeys.has(key)) w.classList.add("has-rec");
+    const tick = recordedKeys.has(key) ? `<span class="reciic">🎙️</span>` : "";
+    w.innerHTML=`<button class="mic" title="Record your voice">🎤</button>`
+              + `<span class="emoji">${it[0]}</span>${labelFor(it)}${tick}`;
+
+    // tap the card -> play recorded voice if we have one, else computer voice
+    w.onclick=async (e)=>{
+      if(e.target.closest(".mic")) return; // mic handled separately
+      const blob = await getRec(key);
+      if(blob){ playRec(blob); }
+      else { const spoken=(speakLang==="ar")?it[2]:it[1]; say(spoken,speakLang); }
+      sentence.push(it); renderStrip();
+    };
+    // tap the mic -> start/stop recording
+    w.querySelector(".mic").onclick=(e)=>{ e.stopPropagation(); toggleRecord(it, w); };
+    boardEl.appendChild(w);
+  });
+}
+function renderStrip(){
+  stripEl.innerHTML="";
+  sentence.forEach(it=>{
+    const c=document.createElement("div"); c.className="chip";
+    c.innerHTML=`<div class="emoji">${it[0]}</div><div class="lbl">${chipLabel(it)}</div>`;
+    stripEl.appendChild(c);
+  });
+  stripEl.scrollLeft = (lang==="ar")?0:stripEl.scrollWidth;
+}
+document.getElementById("speakBtn").onclick=async ()=>{
+  if(!sentence.length)return;
+  // play each word: recorded voice if we have one, otherwise computer voice
+  for(const s of sentence){
+    const blob = await getRec(recKey(s));
+    if(blob){
+      await new Promise(res=>{
+        const url=URL.createObjectURL(blob); const a=new Audio(url);
+        a.onended=()=>{ URL.revokeObjectURL(url); res(); };
+        a.onerror=()=>res(); a.play().catch(()=>res());
+      });
+    } else {
+      const word = speakLang==="ar"?s[2]:s[1];
+      say(word, speakLang);
+      await new Promise(res=>setTimeout(res, 700));
+    }
+  }
+};
+document.getElementById("clearBtn").onclick=()=>{ sentence=[]; renderStrip(); };
+document.getElementById("backBtn").onclick=()=>{ sentence.pop(); renderStrip(); };
+document.getElementById("langToggle").addEventListener("click",e=>{
+  const btn=e.target.closest("button"); if(!btn)return;
+  lang=btn.dataset.lang;
+  [...e.currentTarget.children].forEach(b=>b.setAttribute("aria-pressed", b===btn));
+  applyLangChrome(); renderCats(); renderBoard(); renderStrip();
+});
+// Start: open storage, load which words already have a recording, then render
+(async function init(){
+  try{ await openDB(); await loadRecordedKeys(); }catch(e){ /* storage unavailable */ }
+  applyLangChrome(); renderCats(); renderBoard();
+})();
+
+// Unlock audio on first user tap (phones block speech until then)
+let audioUnlocked=false;
+function unlockAudio(){
+  if(audioUnlocked || !('speechSynthesis' in window)) return;
+  audioUnlocked=true;
+  loadVoices();
+  const u=new SpeechSynthesisUtterance(" ");
+  u.volume=0; speechSynthesis.speak(u);
+}
+document.body.addEventListener("touchstart", unlockAudio, {once:true});
+document.body.addEventListener("click", unlockAudio, {once:true});
+</script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+{
+  "name": "amoory-app",
+  "version": "1.0.0",
+  "description": "Talk Board — picture-and-voice communication for nonspeaking children, with community dialect voices.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/inject-config.js && npx serve public -l 3000",
+    "build": "node scripts/build.js",
+    "cap:add:ios": "npx cap add ios",
+    "cap:add:android": "npx cap add android",
+    "cap:sync": "npx cap sync",
+    "cap:open:ios": "npx cap open ios",
+    "cap:open:android": "npx cap open android"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.0.0",
+    "@capacitor/core": "^8.0.0",
+    "@capacitor/ios": "^8.0.0",
+    "@capacitor/android": "^8.0.0",
+    "serve": "^14.2.0"
+  }
+}
