@@ -5,8 +5,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node scripts/inject-config.js && npx serve public -l 3000",
+    "dev": "node scripts/inject-config.js && npx serve -l tcp://127.0.0.1:3000 --no-port-switching public",
     "build": "node scripts/build.js",
+    "icons": "node scripts/generate-icons.js",
+    "build:all": "npm run icons && npm run build",
+    "env:from-housegames": "node scripts/copy-env-from-housegames.js",
     "cap:add:ios": "npx cap add ios",
     "cap:add:android": "npx cap add android",
     "cap:sync": "npx cap sync",
@@ -17,10 +20,12 @@
     "@supabase/supabase-js": "^2.45.0"
   },
   "devDependencies": {
+    "@capacitor/android": "^8.0.0",
     "@capacitor/cli": "^8.0.0",
     "@capacitor/core": "^8.0.0",
     "@capacitor/ios": "^8.0.0",
-    "@capacitor/android": "^8.0.0",
-    "serve": "^14.2.0"
+    "serve": "^14.2.0",
+    "sharp": "^0.35.2",
+    "typescript": "^6.0.3"
   }
 }

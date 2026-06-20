@@ -1,0 +1,14 @@
+# Cloudflare Pages — optional standalone deploy for Talk Board
+# Primary production path: https://housegames.club/amoory/ (via HouseGames sync)
+#
+# Standalone deploy:
+#   npm run build
+#   npx wrangler pages deploy dist --project-name=talk-board
+#
+# Or connect this repo in Cloudflare Pages dashboard:
+#   Build command: npm run build
+#   Output directory: dist
+
+name = "talk-board"
+pages_build_output_dir = "dist"
+compatibility_date = "2024-01-01"

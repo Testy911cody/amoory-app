@@ -83,12 +83,9 @@ function matchesBlocklist(tokens, blocklist, normalized) {
   for (const token of tokens) {
     if (blocklist.has(token)) return true;
   }
+  /* Multi-word phrases only — avoid substring false positives (e.g. "hello" vs "hell"). */
   for (const word of blocklist) {
-    if (word.includes(" ")) {
-      if (normalized.includes(word)) return true;
-    } else if (word.length >= 3 && normalized.includes(word)) {
-      return true;
-    }
+    if (word.includes(" ") && normalized.includes(word)) return true;
   }
   return false;
 }

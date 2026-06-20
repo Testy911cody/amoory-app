@@ -1,6 +1,6 @@
 /* Talk Board service worker — makes the app work offline.
    Bump CACHE_VERSION whenever app files change so users get the update. */
-const CACHE_VERSION = "talkboard-v8";
+const CACHE_VERSION = "talkboard-v9";
 const SHELL_URL = "./index.html";
 const CORE_ASSETS = [
   SHELL_URL,
@@ -75,6 +75,10 @@ self.addEventListener("fetch", (event) => {
   const isSameOrigin = url.origin === self.location.origin;
 
   if (isSameOrigin && isNavigation(req)) {
+    // Let the browser handle /index.html → trailing-slash redirects from the host.
+    // Intercepting those navigations in a SW often yields net::ERR_FAILED in Chrome.
+    if (url.pathname.endsWith("/index.html")) return;
+
     event.respondWith(
       networkFetch(req)
         .then((res) => {

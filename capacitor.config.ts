@@ -4,7 +4,7 @@ const config: CapacitorConfig = {
   appId: "com.talkboard.app",
   appName: "Talk Board",
   // Capacitor bundles whatever is in this folder as the app's web content.
-  webDir: "public",
+  webDir: "dist",
   backgroundColor: "#F2F6F8",
   ios: {
     contentInset: "always"

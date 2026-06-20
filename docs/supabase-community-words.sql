@@ -54,7 +54,52 @@ create policy "Admins can review"
     )
   );
 
--- Storage bucket: community-audio (public read for approved files only via signed URLs or public bucket policy)
+-- ---------------------------------------------------------------------------
+-- Storage bucket for contributed dialect recordings.
+-- The app uploads to `community-audio/<user_id>/<word_id>.webm`.
+-- Bucket is public-read (the app stores public URLs); writes are restricted
+-- to signed-in contributors writing inside their own user folder.
+-- ---------------------------------------------------------------------------
+insert into storage.buckets (id, name, public)
+values ('community-audio', 'community-audio', true)
+on conflict (id) do nothing;
+
+-- Public can read audio (needed so the board can play approved recordings)
+create policy "Community audio is public-read"
+  on storage.objects for select
+  using (bucket_id = 'community-audio');
+
+-- Signed-in contributors can upload into their own folder
+create policy "Contributors upload own audio"
+  on storage.objects for insert
+  to authenticated
+  with check (
+    bucket_id = 'community-audio'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+-- Contributors can replace their own uploads
+create policy "Contributors update own audio"
+  on storage.objects for update
+  to authenticated
+  using (
+    bucket_id = 'community-audio'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+-- Auto-create a profile row on first sign-in (needed for the admin review flow)
+create or replace function public.handle_new_user()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  insert into public.profiles (id) values (new.id) on conflict (id) do nothing;
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute function public.handle_new_user();
 
 -- Optional: admin flag for review policy (run after enabling Supabase Auth)
 create table if not exists public.profiles (

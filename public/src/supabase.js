@@ -44,8 +44,8 @@ export async function getCurrentUser() {
   return data?.user || null;
 }
 
-/** Synthetic email domain for username-only caregiver accounts. */
-export const USERNAME_EMAIL_DOMAIN = "@talkboard.local";
+/** Synthetic email domain for username-only caregiver accounts (must be a valid TLD for Supabase). */
+export const USERNAME_EMAIL_DOMAIN = "@talkboard.app";
 
 export function normalizeUsername(raw) {
   return String(raw || "").trim().toLowerCase();
@@ -91,6 +91,12 @@ function friendlyAuthError(message) {
   if (m.includes("user already registered")) return "That username is already taken.";
   if (m.includes("email not confirmed")) {
     return "Account is not active yet. Ask the administrator to disable email confirmation in Supabase.";
+  }
+  if (m.includes("email address") && m.includes("invalid")) {
+    return "Could not create account — try a different username.";
+  }
+  if (m.includes("over_email_send_rate_limit") || (m.includes("email") && m.includes("rate limit"))) {
+    return "Too many sign-up attempts — wait an hour and try again.";
   }
   if (m.includes("rate limit")) return "Too many attempts — wait a minute and try again.";
   if (m.includes("signup is disabled")) return "Account sign-up is disabled on the server.";

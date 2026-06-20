@@ -2,7 +2,7 @@
   "name": "Talk Board",
   "short_name": "Talk Board",
   "description": "A picture-and-voice communication app for nonspeaking children, with community-recorded dialect voices.",
-  "start_url": "./index.html",
+  "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",

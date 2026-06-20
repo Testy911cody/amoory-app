@@ -2,7 +2,7 @@
 -- Run in Supabase SQL editor on the HouseGames project.
 --
 -- REQUIRED (Supabase Dashboard → Authentication → Providers → Email):
---   Turn OFF "Confirm email" — username accounts use synthetic @talkboard.local
+--   Turn OFF "Confirm email" — username accounts use synthetic @talkboard.app
 --   addresses that cannot receive confirmation mail. Without this, sign-up never
 --   completes and cloud recording sync will not work.
 
