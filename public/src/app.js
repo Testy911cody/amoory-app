@@ -13,7 +13,6 @@ import {
   approveSubmission, rejectSubmission, getCommunityAudio, syncShareQueue,
   fetchOnlinePending, approveOnlineSubmission, rejectOnlineSubmission
 } from "./community.js";
-import { initSchedule, renderSchedule } from "./schedule.js";
 import {
   SUPABASE_READY, getCurrentUser, signInWithEmail, signInWithPassword,
   signUpWithPassword, signOut, onAuthChange, displayUsername,
@@ -364,6 +363,9 @@ function applyChrome() {
   renderLangIndicator();
   updateCaregiverAuthLabels();
   updateSettingsPanelLabels();
+  updateBoardSection();
+  const settingsBtn = document.getElementById("settingsBtn");
+  if (settingsBtn) settingsBtn.title = t("settings");
 }
 
 function updateSettingsPanelLabels() {
@@ -371,13 +373,10 @@ function updateSettingsPanelLabels() {
     settingsPanelTitle: "settings",
     settingsTabGeneralBtn: "settingsTabGeneral",
     settingsTabPendingLbl: "settingsTabPending",
-    settingsTabAllCardsBtn: "settingsTabAllCards",
     pendingWordsTitle: "pendingWordsTitle",
     pendingWordsHint: "pendingWordsHint",
     pendingLocalTitle: "pendingLocalTitle",
     pendingOnlineTitle: "pendingOnlineTitle",
-    allCardsTitle: "allCardsTitle",
-    allCardsHint: "allCardsHint",
     caregiverModeLbl: "caregiverMode",
     exitCaregiverBtn: "exitCaregiver"
   };
@@ -389,6 +388,21 @@ function updateSettingsPanelLabels() {
   if (exitBtn) exitBtn.textContent = t("exitCaregiver");
   const hint = document.getElementById("caregiverHint");
   if (hint) hint.textContent = t("caregiverHint");
+}
+
+function updateBoardSection() {
+  const section = document.getElementById("boardSection");
+  if (!section) return;
+  const kidBoard = !isCaregiver() || !settings.fullBoard;
+  if (kidBoard && state.kidView === "more") {
+    section.hidden = false;
+    const title = document.getElementById("boardSectionTitle");
+    const hint = document.getElementById("boardSectionHint");
+    if (title) title.textContent = t("viewMore");
+    if (hint) hint.textContent = t("moreWordsHint");
+  } else {
+    section.hidden = true;
+  }
 }
 
 function updateCaregiverAuthLabels() {
@@ -512,7 +526,7 @@ function renderCats() {
     b.setAttribute("aria-selected", v.id === state.kidView);
     const name = labelForKidView(v, settings.locale);
     b.innerHTML = `<span class="dot" style="background:${v.color}"></span><span class="cat-emoji">${v.icon}</span>${name}`;
-    b.onclick = () => { state.kidView = v.id; renderCats(); renderBoard(); };
+    b.onclick = () => { state.kidView = v.id; renderCats(); updateBoardSection(); renderBoard(); };
     el.cats.appendChild(b);
   });
 }
@@ -701,8 +715,8 @@ function renderBoard() {
     const msg = document.createElement("p");
     msg.className = "empty-more muted";
     msg.textContent = isCaregiver()
-      ? (t("noTierMore") || "No tier 2+ words yet — adjust unlock tier in settings.")
-      : (t("moreUnlocking") || "More words unlock as you use the board.");
+      ? t("noTierMore")
+      : t("moreUnlocking");
     el.board.appendChild(msg);
   }
 }
@@ -719,19 +733,10 @@ function renderStrip() {
   el.strip.scrollLeft = rtl ? 0 : el.strip.scrollWidth;
 }
 
-function getAllBoardWords() {
-  const all = [];
-  CATEGORIES.forEach(c => {
-    const words = mergeAllWords(WORDS[c.id] || [], c.id, settings.locale, state.dialect);
-    words.forEach(w => all.push({ word: w, categoryId: c.id }));
-  });
-  return all;
-}
-
 function switchSettingsTab(tab) {
   settingsTab = tab;
-  ["general", "pending", "allcards"].forEach(name => {
-    const panel = document.getElementById(`settingsTab${name === "general" ? "General" : name === "pending" ? "Pending" : "AllCards"}`);
+  ["general", "pending"].forEach(name => {
+    const panel = document.getElementById(`settingsTab${name === "general" ? "General" : "Pending"}`);
     if (panel) panel.hidden = tab !== name;
   });
   document.querySelectorAll(".settings-tab").forEach(btn => {
@@ -739,11 +744,10 @@ function switchSettingsTab(tab) {
   });
   const title = document.getElementById("settingsPanelTitle");
   if (title) {
-    const titles = { general: "settings", pending: "settingsTabPending", allcards: "settingsTabAllCards" };
+    const titles = { general: "settings", pending: "settingsTabPending" };
     title.textContent = t(titles[tab] || "settings");
   }
   if (tab === "pending") renderPendingQueue();
-  if (tab === "allcards") renderAllCardsGrid();
 }
 
 function updatePendingBadge(count) {
@@ -841,31 +845,6 @@ async function renderPendingQueue() {
   if (el.pendingOnlineList) bindActions(el.pendingOnlineList);
 }
 
-function renderAllCardsGrid() {
-  const grid = document.getElementById("allCardsGrid");
-  const countEl = document.getElementById("allCardsCount");
-  if (!grid) return;
-  const entries = getAllBoardWords();
-  const catIds = new Set(entries.map(e => e.categoryId));
-  if (countEl) {
-    countEl.textContent = t("allCardsCount")
-      .replace("{n}", String(entries.length))
-      .replace("{c}", String(catIds.size));
-  }
-  grid.innerHTML = "";
-  entries.forEach(({ word: w, categoryId }) => {
-    const cat = CATEGORIES.find(c => c.id === categoryId);
-    const catName = cat ? labelForCategory(cat, settings.locale, state.dialect) : categoryId;
-    const item = document.createElement("div");
-    item.className = "all-cards-item";
-    item.innerHTML = `
-      <div class="emoji">${w.emoji || "💬"}</div>
-      <span class="lbl">${labelForWord(w, settings.locale, state.dialect)}</span>
-      <span class="cat-tag">${catName}</span>`;
-    grid.appendChild(item);
-  });
-}
-
 function refreshAll() {
   applyChrome();
   renderLocaleSelect();
@@ -892,15 +871,6 @@ function closePanel(panel) {
   panel.setAttribute("aria-hidden", "true");
 }
 
-document.getElementById("settingsBtn").onclick = () => {
-  if (!isCaregiver()) {
-    toast(t("caregiverHint"));
-    return;
-  }
-  renderUsageStats();
-  switchSettingsTab(settingsTab || "general");
-  openPanel(el.settingsPanel);
-};
 document.getElementById("settingsClose").onclick = () => closePanel(el.settingsPanel);
 document.getElementById("contributeBtn").onclick = () => {
   const share = document.getElementById("contribShareOnline");
@@ -908,12 +878,6 @@ document.getElementById("contributeBtn").onclick = () => {
   openPanel(el.contributePanel);
 };
 document.getElementById("contributeClose").onclick = () => closePanel(el.contributePanel);
-document.getElementById("scheduleBtn").onclick = () => {
-  renderSchedule();
-  openPanel(document.getElementById("schedulePanel"));
-};
-document.getElementById("scheduleClose").onclick = () =>
-  closePanel(document.getElementById("schedulePanel"));
 
 el.localeSelect.addEventListener("change", e => {
   settings = saveSettings({ locale: e.target.value });
@@ -951,7 +915,84 @@ document.getElementById("secondaryLocaleSelect").addEventListener("change", e =>
   refreshAll();
 });
 
-/* ---------------- Caregiver mode (long-press ⚙️) ---------------- */
+/* ---------------- Caregiver mode (tap ⚙️) ---------------- */
+function openCaregiverSettings() {
+  renderUsageStats();
+  switchSettingsTab(settingsTab || "general");
+  openPanel(el.settingsPanel);
+}
+
+function requestCaregiverAccess() {
+  if (isCaregiver()) {
+    openCaregiverSettings();
+    return;
+  }
+  if (settings.caregiverPin) {
+    openPinPanel(enterCaregiverMode);
+    return;
+  }
+  enterCaregiverMode();
+}
+
+let pinPanelCallback = null;
+
+function openPinPanel(onSuccess) {
+  const panel = document.getElementById("pinPanel");
+  const input = document.getElementById("pinPanelInput");
+  const errorEl = document.getElementById("pinPanelError");
+  if (!panel || !input) {
+    const pin = prompt(t("enterPin"));
+    if (pin === settings.caregiverPin) onSuccess();
+    else if (pin != null) toast(t("wrongPin"));
+    return;
+  }
+  pinPanelCallback = onSuccess;
+  document.getElementById("pinPanelTitle").textContent = t("enterPin");
+  document.getElementById("pinPanelHint").textContent = t("pinPanelHint");
+  document.getElementById("pinPanelLbl").textContent = t("accountPassword");
+  document.getElementById("pinPanelCancel").textContent = t("cancel");
+  input.placeholder = t("accountPinPlaceholder");
+  input.value = "";
+  if (errorEl) {
+    errorEl.textContent = "";
+    errorEl.hidden = true;
+  }
+  openPanel(panel);
+  input.focus();
+}
+
+function closePinPanel() {
+  pinPanelCallback = null;
+  closePanel(document.getElementById("pinPanel"));
+}
+
+function submitPinPanel() {
+  const input = document.getElementById("pinPanelInput");
+  const errorEl = document.getElementById("pinPanelError");
+  const pin = input?.value.trim() || "";
+  if (pin === settings.caregiverPin) {
+    const cb = pinPanelCallback;
+    closePinPanel();
+    cb?.();
+    return;
+  }
+  if (errorEl) {
+    errorEl.textContent = t("wrongPin");
+    errorEl.hidden = false;
+  } else {
+    toast(t("wrongPin"));
+  }
+  input?.focus();
+}
+
+function setupPinPanel() {
+  document.getElementById("pinPanelSubmit")?.addEventListener("click", submitPinPanel);
+  document.getElementById("pinPanelCancel")?.addEventListener("click", closePinPanel);
+  document.getElementById("pinPanelClose")?.addEventListener("click", closePinPanel);
+  document.getElementById("pinPanelInput")?.addEventListener("keydown", e => {
+    if (e.key === "Enter") submitPinPanel();
+  });
+}
 function applyCaregiverVisibility() {
   const on = isCaregiver();
   document.querySelectorAll(".caregiver-only").forEach(el => {
@@ -965,12 +1006,10 @@ function applyCaregiverVisibility() {
   if (tabs) tabs.hidden = !on;
   if (on) {
     renderPendingQueue().catch(() => {});
-    if (settingsTab === "allcards") renderAllCardsGrid();
   } else {
     settingsTab = "general";
     document.getElementById("settingsTabGeneral")?.removeAttribute("hidden");
     document.getElementById("settingsTabPending")?.setAttribute("hidden", "");
-    document.getElementById("settingsTabAllCards")?.setAttribute("hidden", "");
   }
 }
 
@@ -1009,24 +1048,10 @@ function renderUsageStats() {
 
 function setupCaregiverGate() {
   const btn = document.getElementById("settingsBtn");
-  let timer = null;
-  const start = () => {
-    timer = setTimeout(() => {
-      timer = null;
-      if (settings.caregiverPin) {
-        const pin = prompt(t("enterPin"));
-        if (pin === settings.caregiverPin) enterCaregiverMode();
-        else if (pin != null) toast(t("wrongPin") || "Wrong PIN");
-      } else {
-        enterCaregiverMode();
-      }
-    }, 2000);
-  };
-  const cancel = () => { if (timer) { clearTimeout(timer); timer = null; } };
-  btn.addEventListener("pointerdown", start);
-  btn.addEventListener("pointerup", cancel);
-  btn.addEventListener("pointerleave", cancel);
-  btn.addEventListener("pointercancel", cancel);
+  btn?.addEventListener("click", e => {
+    e.preventDefault();
+    requestCaregiverAccess();
+  });
 
   document.getElementById("exitCaregiverBtn").onclick = exitCaregiverMode;
   document.getElementById("resetUsageBtn").onclick = () => {
@@ -1044,6 +1069,7 @@ function setupCaregiverGate() {
   document.getElementById("fullBoardToggle").onchange = e => {
     settings = saveSettings({ fullBoard: e.target.checked });
     renderCats();
+    updateBoardSection();
     renderBoard();
   };
   document.getElementById("caregiverPinInput").onchange = e => {
@@ -1631,13 +1657,8 @@ function bootUI() {
   setupCaregiverAuth();
   setupRecordAuth();
   setupCustomWordForm();
+  setupPinPanel();
   setupCaregiverGate();
-  initSchedule({
-    getSettings: () => settings,
-    getDialect: () => state.dialect,
-    speakWord,
-    wordsForCategory
-  });
   refreshAll();
 }
 

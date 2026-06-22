@@ -41,7 +41,6 @@
     <div class="title" id="appTitle">Talk Board</div>
     <span id="langIndicator" class="lang-chip" aria-live="polite" title="Current speak language"></span>
     <div class="topbar-actions">
-      <button class="icon-btn" id="scheduleBtn" title="First / Then schedule">📅</button>
       <button class="icon-btn caregiver-only" id="contributeBtn" title="Suggest a word" hidden>➕</button>
     </div>
   </div>
@@ -80,7 +79,6 @@
           <span class="settings-tab-label" id="settingsTabPendingLbl">Pending words</span>
           <span class="settings-tab-badge" id="pendingBadge" hidden>0</span>
         </button>
-        <button type="button" class="settings-tab" data-tab="allcards" id="settingsTabAllCardsBtn">All cards</button>
       </nav>
       <div class="panel-body">
         <div class="caregiver-banner" id="caregiverBanner" hidden>
@@ -100,13 +98,6 @@
             <p class="muted" id="pendingOnlineHint"></p>
             <div id="pendingOnlineList"></div>
           </div>
-        </div>
-
-        <div class="settings-tab-panel" id="settingsTabAllCards" hidden>
-          <h3 id="allCardsTitle">All word cards</h3>
-          <p class="muted" id="allCardsHint">Every word on the board for the current language.</p>
-          <p class="muted" id="allCardsCount"></p>
-          <div class="all-cards-grid" id="allCardsGrid"></div>
         </div>
 
         <div class="settings-tab-panel" id="settingsTabGeneral">
@@ -232,39 +223,6 @@
           · Talk Board <span id="appVersion">v1.0</span>
         </p>
         </div><!-- /settingsTabGeneral -->
-      </div>
-    </div>
-  </div>
-
-  <!-- First / Then schedule panel -->
-  <div class="panel" id="schedulePanel" hidden aria-hidden="true">
-    <div class="panel-inner panel-tall">
-      <div class="panel-head">
-        <h2 id="scheduleTitle">First / Then</h2>
-        <button class="icon-btn" id="scheduleClose" aria-label="Close">✕</button>
-      </div>
-      <div class="panel-body">
-        <p class="muted" id="scheduleSubhint">Visual routine: first do one activity, then the next step or reward.</p>
-        <p class="muted" id="scheduleHint">Pick a picture for First and for Then.</p>
-        <div class="sched-slots">
-          <button type="button" class="sched-slot" id="schedFirst" data-slot="first">
-            <span class="sched-step" id="schedFirstLbl">First</span>
-            <span class="sched-pic">＋</span>
-            <span class="sched-word"></span>
-          </button>
-          <span class="sched-arrow">→</span>
-          <button type="button" class="sched-slot" id="schedThen" data-slot="then">
-            <span class="sched-step" id="schedThenLbl">Then</span>
-            <span class="sched-pic">＋</span>
-            <span class="sched-word"></span>
-          </button>
-        </div>
-        <div class="sched-controls">
-          <button type="button" class="btn-primary" id="schedSpeak">🔊 <span id="schedSpeakLbl">Say</span></button>
-          <button type="button" class="btn-secondary" id="schedClear">Clear</button>
-        </div>
-        <div class="cats" id="schedCats"></div>
-        <div class="board sched-board" id="schedPicker"></div>
       </div>
     </div>
   </div>

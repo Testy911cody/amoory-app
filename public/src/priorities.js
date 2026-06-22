@@ -64,7 +64,7 @@ export const KID_VIEWS = [
   { id: "home", labels: { en: "Talk", ar: "كلام", fr: "Parler", es: "Hablar", de: "Sprechen", hi: "बात", sw: "Ongea" }, color: "#2E8C8C", icon: "💬" },
   { id: "need", labels: { en: "Need", ar: "محتاج", fr: "Besoin", es: "Necesito", de: "Brauchen", hi: "चाहिए", sw: "Nahitaji" }, color: "#9C6FB0", icon: "🙏" },
   { id: "feel", labels: { en: "Feel", ar: "حاسس", fr: "Ressentir", es: "Sentir", de: "Fühlen", hi: "महसूस", sw: "Hisia" }, color: "#D9695A", icon: "😊" },
-  { id: "more", labels: { en: "More", ar: "كمان", fr: "Plus", es: "Más", de: "Mehr", hi: "और", sw: "Zaidi" }, color: "#5B86C4", icon: "➕" }
+  { id: "more", labels: { en: "More words", ar: "كلمات أكثر", fr: "Plus de mots", es: "Más palabras", de: "Mehr Wörter", hi: "और शब्द", sw: "Maneno zaidi" }, color: "#5B86C4", icon: "➕" }
 ];
 
 /** Which source categories feed each kid view (for need/feel/more filters). */
