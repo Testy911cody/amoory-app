@@ -234,39 +234,41 @@
         <h2>Suggest a word</h2>
         <button class="icon-btn" id="contributeClose" aria-label="Close">✕</button>
       </div>
-      <form class="panel-body" id="contribForm">
-        <label class="field">
-          <span>Word</span>
-          <input type="text" id="contribText" required maxlength="80" placeholder="Type the word in your language">
-        </label>
-        <label class="field">
-          <span>Category</span>
-          <select id="contribCategory" required></select>
-        </label>
-        <label class="field">
-          <span>Emoji (optional)</span>
-          <input type="text" id="contribEmoji" maxlength="4" placeholder="💬">
-        </label>
-        <div class="field">
-          <span>Record audio (optional)</span>
-          <button type="button" class="btn-record" id="contribRecordBtn">🎤 Record</button>
-        </div>
-
-        <!-- Online sharing (only shown when Supabase is configured) -->
-        <div class="field check" id="shareOnlineField" hidden>
-          <input type="checkbox" id="contribShareOnline" checked>
-          <span id="shareOnlineLbl">Contribute free words to the community dialect library</span>
-        </div>
-        <div class="contrib-auth" id="contribAuth" hidden>
-          <p class="muted" id="authStatus">Sign in to share recordings with everyone.</p>
-          <div class="row" id="signInRow">
-            <input type="email" id="contribEmail" placeholder="you@email.com" autocomplete="email">
-            <button type="button" class="btn-secondary" id="signInBtn">Send link</button>
+      <form class="panel-form" id="contribForm">
+        <div class="panel-body">
+          <label class="field">
+            <span>Word</span>
+            <input type="text" id="contribText" required maxlength="80" placeholder="Type the word in your language">
+          </label>
+          <label class="field">
+            <span>Category</span>
+            <select id="contribCategory" required></select>
+          </label>
+          <label class="field">
+            <span>Emoji (optional)</span>
+            <input type="text" id="contribEmoji" maxlength="4" placeholder="💬">
+          </label>
+          <div class="field">
+            <span>Record audio (optional)</span>
+            <button type="button" class="btn-record" id="contribRecordBtn">🎤 Record</button>
           </div>
-          <button type="button" class="btn-secondary" id="signOutBtn" hidden>Sign out</button>
-        </div>
 
-        <p class="muted">Submissions stay pending until approved. Approved words appear on the board for this device. When online sharing is set up and you sign in, contributions are reviewed by a moderator before going live for everyone.</p>
+          <!-- Online sharing (only shown when Supabase is configured) -->
+          <div class="field check" id="shareOnlineField" hidden>
+            <input type="checkbox" id="contribShareOnline" checked>
+            <span id="shareOnlineLbl">Contribute free words to the community dialect library</span>
+          </div>
+          <div class="contrib-auth" id="contribAuth" hidden>
+            <p class="muted" id="authStatus">Sign in to share recordings with everyone.</p>
+            <div class="row" id="signInRow">
+              <input type="email" id="contribEmail" placeholder="you@email.com" autocomplete="email">
+              <button type="button" class="btn-secondary" id="signInBtn">Send link</button>
+            </div>
+            <button type="button" class="btn-secondary" id="signOutBtn" hidden>Sign out</button>
+          </div>
+
+          <p class="muted">Submissions stay pending until approved. Approved words appear on the board for this device. When online sharing is set up and you sign in, contributions are reviewed by a moderator before going live for everyone.</p>
+        </div>
         <div class="panel-actions">
           <button type="button" class="btn-secondary" id="contributeClose2" onclick="document.getElementById('contributeClose').click()">Cancel</button>
           <button type="submit" class="btn-primary">Submit</button>
@@ -299,11 +301,11 @@
             <input type="checkbox" id="recordAuthShareCommunity" checked>
             <span id="recordAuthShareLbl">Contribute free words to the community dialect library</span>
           </label>
-          <div class="row auth-actions">
-            <button type="button" class="btn-primary" id="recordAuthSignInBtn">Sign in</button>
-            <button type="button" class="btn-secondary" id="recordAuthSignUpBtn">Create account</button>
-          </div>
         </div>
+      </div>
+      <div class="panel-actions auth-actions">
+        <button type="button" class="btn-primary" id="recordAuthSignInBtn">Sign in</button>
+        <button type="button" class="btn-secondary" id="recordAuthSignUpBtn">Create account</button>
       </div>
     </div>
   </div>
@@ -322,10 +324,10 @@
           <span id="pinPanelLbl">PIN</span>
           <input type="password" id="pinPanelInput" inputmode="numeric" maxlength="4" pattern="[0-9]*" autocomplete="off" placeholder="••••">
         </label>
-        <div class="row auth-actions">
-          <button type="button" class="btn-primary" id="pinPanelSubmit">Continue</button>
-          <button type="button" class="btn-secondary" id="pinPanelCancel">Cancel</button>
-        </div>
+      </div>
+      <div class="panel-actions auth-actions">
+        <button type="button" class="btn-primary" id="pinPanelSubmit">Continue</button>
+        <button type="button" class="btn-secondary" id="pinPanelCancel">Cancel</button>
       </div>
     </div>
   </div>
