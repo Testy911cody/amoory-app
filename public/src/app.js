@@ -13,7 +13,6 @@ import {
   approveSubmission, rejectSubmission, getCommunityAudio, syncShareQueue,
   fetchOnlinePending, approveOnlineSubmission, rejectOnlineSubmission
 } from "./community.js";
-import { initSchedule, renderSchedule } from "./schedule.js";
 import {
   SUPABASE_READY, getCurrentUser, signInWithEmail, signInWithPassword,
   signUpWithPassword, signOut, onAuthChange, displayUsername,
@@ -367,8 +366,6 @@ function applyChrome() {
   updateBoardSection();
   const settingsBtn = document.getElementById("settingsBtn");
   if (settingsBtn) settingsBtn.title = t("settings");
-  const scheduleBtn = document.getElementById("scheduleBtn");
-  if (scheduleBtn) scheduleBtn.title = t("scheduleBtnTitle");
 }
 
 function updateSettingsPanelLabels() {
@@ -875,12 +872,6 @@ function closePanel(panel) {
 }
 
 document.getElementById("settingsClose").onclick = () => closePanel(el.settingsPanel);
-document.getElementById("scheduleBtn").onclick = () => {
-  renderSchedule();
-  openPanel(document.getElementById("schedulePanel"));
-};
-document.getElementById("scheduleClose").onclick = () =>
-  closePanel(document.getElementById("schedulePanel"));
 document.getElementById("contributeBtn").onclick = () => {
   const share = document.getElementById("contribShareOnline");
   if (share) share.checked = true;
@@ -1668,12 +1659,6 @@ function bootUI() {
   setupCustomWordForm();
   setupPinPanel();
   setupCaregiverGate();
-  initSchedule({
-    getSettings: () => settings,
-    getDialect: () => state.dialect,
-    speakWord,
-    wordsForCategory
-  });
   refreshAll();
 }
 
