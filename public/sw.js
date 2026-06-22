@@ -1,6 +1,6 @@
 /* Talk Board service worker — makes the app work offline.
    Bump CACHE_VERSION whenever app files change so users get the update. */
-const CACHE_VERSION = "talkboard-v10";
+const CACHE_VERSION = "talkboard-v11";
 const SHELL_URL = "./index.html";
 const CORE_ASSETS = [
   SHELL_URL,
@@ -17,6 +17,7 @@ const CORE_ASSETS = [
   "./src/priorities.js",
   "./src/usage.js",
   "./src/kid-ui.js",
+  "./src/schedule.js",
   "./src/styles.css",
   "./manifest.json",
   "./icons/icon-192.png",
