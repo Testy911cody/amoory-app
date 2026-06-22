@@ -62,11 +62,26 @@ export function validateUsername(raw) {
   return { ok: true, username };
 }
 
-export function validatePassword(password) {
-  if (!password || password.length < 6) {
-    return { ok: false, error: "Password must be at least 6 characters." };
+/** Demo account — always preloaded with cloud recordings on first visit. */
+export const DOGGY_USERNAME = "doggy";
+export const DOGGY_USER_ID = "7ee281ce-5ba8-4f2b-bb87-5e4185d12a38";
+
+/** Map 4-digit PIN to Supabase password (min 6 chars). */
+export function pinToPassword(pin) {
+  return `pin${String(pin || "").trim()}`;
+}
+
+export function validatePin(pin) {
+  const value = String(pin || "").trim();
+  if (!/^\d{4}$/.test(value)) {
+    return { ok: false, error: "PIN must be exactly 4 digits." };
   }
-  return { ok: true };
+  return { ok: true, pin: value };
+}
+
+/** @deprecated Use validatePin — kept for any legacy callers. */
+export function validatePassword(password) {
+  return validatePin(password);
 }
 
 export function usernameToEmail(username) {
@@ -87,7 +102,7 @@ export function displayUsername(user) {
 
 function friendlyAuthError(message) {
   const m = (message || "").toLowerCase();
-  if (m.includes("invalid login credentials")) return "Wrong username or password.";
+  if (m.includes("invalid login credentials")) return "Wrong username or PIN.";
   if (m.includes("user already registered")) return "That username is already taken.";
   if (m.includes("email not confirmed")) {
     return "Account is not active yet. Ask the administrator to disable email confirmation in Supabase.";
@@ -123,14 +138,15 @@ export async function signInWithEmail(email) {
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 
-/** Username + password sign-in for caregiver accounts. */
-export async function signInWithPassword(username, password) {
+/** Username + 4-digit PIN sign-in for caregiver accounts. */
+export async function signInWithPassword(username, pin) {
   const supabase = await getSupabase();
   if (!supabase) return { ok: false, error: "Account sign-in is not configured." };
   const userCheck = validateUsername(username);
   if (!userCheck.ok) return userCheck;
-  const passCheck = validatePassword(password);
-  if (!passCheck.ok) return passCheck;
+  const pinCheck = validatePin(pin);
+  if (!pinCheck.ok) return pinCheck;
+  const password = pinToPassword(pinCheck.pin);
   const { data, error } = await supabase.auth.signInWithPassword({
     email: usernameToEmail(userCheck.username),
     password
@@ -141,14 +157,15 @@ export async function signInWithPassword(username, password) {
   return { ok: true, user };
 }
 
-/** Username + password sign-up for caregiver accounts. */
-export async function signUpWithPassword(username, password) {
+/** Username + 4-digit PIN sign-up for caregiver accounts. */
+export async function signUpWithPassword(username, pin) {
   const supabase = await getSupabase();
   if (!supabase) return { ok: false, error: "Account sign-up is not configured." };
   const userCheck = validateUsername(username);
   if (!userCheck.ok) return userCheck;
-  const passCheck = validatePassword(password);
-  if (!passCheck.ok) return passCheck;
+  const pinCheck = validatePin(pin);
+  if (!pinCheck.ok) return pinCheck;
+  const password = pinToPassword(pinCheck.pin);
   const email = usernameToEmail(userCheck.username);
   const { data, error } = await supabase.auth.signUp({
     email,
@@ -179,6 +196,15 @@ export async function signUpWithPassword(username, password) {
 export async function signOut() {
   const supabase = await getSupabase();
   if (supabase) await supabase.auth.signOut();
+}
+
+/** Sign in as the demo doggy account when no session exists (loads cloud recordings). */
+export async function ensureDoggyPreload() {
+  if (!SUPABASE_READY) return null;
+  const existing = await getCurrentUser();
+  if (existing) return existing;
+  const res = await signInWithPassword(DOGGY_USERNAME, "1234");
+  return res.ok ? res.user : null;
 }
 
 /** Subscribe to auth changes; returns an unsubscribe function. */

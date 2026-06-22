@@ -37,11 +37,11 @@
 </head>
 <body class="kid-mode">
   <div class="topbar">
-    <button class="icon-btn topbar-corner" id="settingsBtn" title="Settings (hold for caregiver)">⚙️</button>
+    <button class="icon-btn topbar-corner" id="settingsBtn" title="Caregiver settings">⚙️</button>
     <div class="title" id="appTitle">Talk Board</div>
     <span id="langIndicator" class="lang-chip" aria-live="polite" title="Current speak language"></span>
     <div class="topbar-actions">
-      <button class="icon-btn" id="scheduleBtn" title="First / Then">📅</button>
+      <button class="icon-btn" id="scheduleBtn" title="First / Then schedule">📅</button>
       <button class="icon-btn caregiver-only" id="contributeBtn" title="Suggest a word" hidden>➕</button>
     </div>
   </div>
@@ -61,6 +61,10 @@
   </div>
 
   <div class="cats" id="cats"></div>
+  <div class="board-section" id="boardSection" hidden>
+    <h2 class="board-section-title" id="boardSectionTitle"></h2>
+    <p class="muted board-section-hint" id="boardSectionHint"></p>
+  </div>
   <div class="board" id="board"></div>
 
   <!-- Settings panel -->
@@ -83,7 +87,7 @@
           <p><strong id="caregiverModeLbl">Caregiver mode</strong></p>
           <button type="button" class="btn-secondary" id="exitCaregiverBtn">Back to kid view</button>
         </div>
-        <p class="muted caregiver-only" id="caregiverHint" hidden>Hold ⚙️ for 2 seconds to open caregiver settings.</p>
+        <p class="muted caregiver-only" id="caregiverHint" hidden>Tap ⚙️ to open caregiver settings.</p>
 
         <div class="settings-tab-panel" id="settingsTabPending" hidden>
           <h3 id="pendingWordsTitle">Approve new words</h3>
@@ -169,8 +173,8 @@
               <input type="text" id="caregiverUsername" autocomplete="username" placeholder="your_name" minlength="3" pattern="[a-zA-Z0-9_]+" autocapitalize="off" spellcheck="false">
             </label>
             <label class="field">
-              <span id="caregiverPasswordLbl">Password</span>
-              <input type="password" id="caregiverPassword" autocomplete="current-password" minlength="6">
+              <span id="caregiverPasswordLbl">PIN</span>
+              <input type="password" id="caregiverPassword" inputmode="numeric" maxlength="4" pattern="[0-9]*" autocomplete="off" placeholder="••••">
             </label>
             <label class="field check">
               <input type="checkbox" id="caregiverShareCommunity" checked>
@@ -240,6 +244,7 @@
         <button class="icon-btn" id="scheduleClose" aria-label="Close">✕</button>
       </div>
       <div class="panel-body">
+        <p class="muted" id="scheduleSubhint">Visual routine: first do one activity, then the next step or reward.</p>
         <p class="muted" id="scheduleHint">Pick a picture for First and for Then.</p>
         <div class="sched-slots">
           <button type="button" class="sched-slot" id="schedFirst" data-slot="first">
@@ -329,8 +334,8 @@
             <input type="text" id="recordAuthUsername" autocomplete="username" placeholder="your_name" minlength="3" pattern="[a-zA-Z0-9_]+" autocapitalize="off" spellcheck="false">
           </label>
           <label class="field">
-            <span id="recordAuthPasswordLbl">Password</span>
-            <input type="password" id="recordAuthPassword" autocomplete="current-password" minlength="6">
+            <span id="recordAuthPasswordLbl">PIN</span>
+            <input type="password" id="recordAuthPassword" inputmode="numeric" maxlength="4" pattern="[0-9]*" autocomplete="off" placeholder="••••">
           </label>
           <label class="field check">
             <input type="checkbox" id="recordAuthShareCommunity" checked>
@@ -340,6 +345,28 @@
             <button type="button" class="btn-primary" id="recordAuthSignInBtn">Sign in</button>
             <button type="button" class="btn-secondary" id="recordAuthSignUpBtn">Create account</button>
           </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Caregiver PIN gate -->
+  <div class="panel panel-auth" id="pinPanel" hidden aria-hidden="true">
+    <div class="panel-inner">
+      <div class="panel-head">
+        <h2 id="pinPanelTitle">Enter PIN</h2>
+        <button class="icon-btn" id="pinPanelClose" aria-label="Close">✕</button>
+      </div>
+      <div class="panel-body">
+        <p class="muted" id="pinPanelHint">Enter the caregiver PIN to open settings.</p>
+        <p class="auth-error" id="pinPanelError" hidden role="alert"></p>
+        <label class="field">
+          <span id="pinPanelLbl">PIN</span>
+          <input type="password" id="pinPanelInput" inputmode="numeric" maxlength="4" pattern="[0-9]*" autocomplete="off" placeholder="••••">
+        </label>
+        <div class="row auth-actions">
+          <button type="button" class="btn-primary" id="pinPanelSubmit">Continue</button>
+          <button type="button" class="btn-secondary" id="pinPanelCancel">Cancel</button>
         </div>
       </div>
     </div>

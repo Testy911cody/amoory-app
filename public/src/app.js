@@ -17,7 +17,7 @@ import { initSchedule, renderSchedule } from "./schedule.js";
 import {
   SUPABASE_READY, getCurrentUser, signInWithEmail, signInWithPassword,
   signUpWithPassword, signOut, onAuthChange, displayUsername,
-  validateUsername, validatePassword
+  validateUsername, validatePin, ensureDoggyPreload
 } from "./supabase.js";
 import {
   initPersonal, mergePersonalWords, getPersonalRecording, savePersonalRecording,
@@ -157,6 +157,8 @@ function openRecordAuthPanel({ forCommunity = false } = {}) {
   document.getElementById("recordAuthTitle").textContent = forCommunity ? t("contribute") : t("account");
   document.getElementById("recordAuthUsernameLbl").textContent = t("accountUsername");
   document.getElementById("recordAuthPasswordLbl").textContent = t("accountPassword");
+  const passInput = document.getElementById("recordAuthPassword");
+  if (passInput) passInput.placeholder = t("accountPinPlaceholder");
   document.getElementById("recordAuthShareLbl").textContent = t("shareWithCommunityHint");
   document.getElementById("recordAuthSignInBtn").textContent = t("accountSignIn");
   document.getElementById("recordAuthSignUpBtn").textContent = t("accountSignUp");
@@ -406,6 +408,8 @@ function updateCaregiverAuthLabels() {
   }
   const userInput = document.getElementById("caregiverUsername");
   if (userInput) userInput.placeholder = t("accountUsernamePlaceholder");
+  const pinInput = document.getElementById("caregiverPassword");
+  if (pinInput) pinInput.placeholder = t("accountPinPlaceholder");
   const shareBox = document.getElementById("caregiverShareCommunity");
   if (shareBox) shareBox.checked = settings.shareWithCommunity !== false;
   const shareOnlineLbl = document.getElementById("shareOnlineLbl");
@@ -1246,7 +1250,7 @@ function setupRecordAuth() {
       usernameInput?.focus();
       return;
     }
-    if (!validatePassword(password).ok) {
+    if (!validatePin(password).ok) {
       showAuthError(errorEl, t("passwordTooShort"));
       passInput?.focus();
       return;
@@ -1330,7 +1334,7 @@ function setupCaregiverAuth() {
       usernameInput?.focus();
       return;
     }
-    if (!validatePassword(password).ok) {
+    if (!validatePin(password).ok) {
       showAuthError(errorEl, t("passwordTooShort"));
       passInput?.focus();
       return;
@@ -1643,6 +1647,9 @@ function bootUI() {
   bootUI();
   try {
     authUser = await getCurrentUser();
+    if (!authUser && SUPABASE_READY) {
+      authUser = await ensureDoggyPreload();
+    }
     await Promise.allSettled([initCommunity(), initPersonal(authUser)]);
     refreshAll();
   } catch {
