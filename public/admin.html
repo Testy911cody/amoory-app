@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#2E8C8C">
+<meta name="robots" content="noindex, nofollow">
+<title>Talk Board — Admin</title>
+<link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-32.png">
+<link rel="stylesheet" href="./src/styles.css">
+<style>
+  .admin-wrap { max-width: 720px; margin: 0 auto; padding: 16px; }
+  .admin-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+  .admin-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+  .admin-tab { padding: 8px 14px; border-radius: 999px; border: 1px solid var(--border, #ccc); background: #fff; cursor: pointer; }
+  .admin-tab.active { background: var(--accent, #2E8C8C); color: #fff; border-color: transparent; }
+  .admin-section { margin-bottom: 24px; }
+  .admin-badge { font-size: 0.75rem; padding: 2px 8px; border-radius: 999px; background: #f0f4f4; color: #555; }
+  .admin-badge.fallback { background: #fff3cd; color: #856404; }
+  .admin-badge.native { background: #d4edda; color: #155724; }
+  .admin-filter { margin-bottom: 12px; }
+  .admin-denied { padding: 24px; text-align: center; }
+</style>
+</head>
+<body>
+  <div class="admin-wrap">
+    <header class="admin-head">
+      <div>
+        <h1 style="margin:0;font-size:1.25rem">Talk Board Admin</h1>
+        <p class="muted" style="margin:4px 0 0">Approvals, dialects &amp; recordings</p>
+      </div>
+      <a href="./index.html" class="btn-secondary">← Board</a>
+    </header>
+
+    <div id="adminAuth" class="auth-panel contrib-auth">
+      <p class="muted" id="adminAuthStatus">Sign in with an admin account.</p>
+      <p class="auth-error" id="adminAuthError" hidden role="alert"></p>
+      <form id="adminSignInForm" class="auth-form">
+        <label class="field">
+          <span>Username</span>
+          <input type="text" id="adminUsername" autocomplete="username" minlength="3" pattern="[a-zA-Z0-9_]+" autocapitalize="off">
+        </label>
+        <label class="field">
+          <span>PIN</span>
+          <input type="password" id="adminPassword" inputmode="numeric" maxlength="4" autocomplete="off">
+        </label>
+        <button type="submit" class="btn-primary">Sign in</button>
+      </form>
+      <div id="adminSignedIn" hidden>
+        <p class="auth-status ok" id="adminSignedInAs"></p>
+        <button type="button" class="btn-secondary" id="adminSignOutBtn">Sign out</button>
+      </div>
+    </div>
+
+    <div id="adminDenied" class="admin-denied" hidden>
+      <p>This account is not an admin. Ask a project owner to set <code>profiles.is_admin = true</code>.</p>
+      <a href="./index.html" class="btn-secondary">Back to Talk Board</a>
+    </div>
+
+    <div id="adminMain" hidden>
+      <nav class="admin-tabs" aria-label="Admin sections">
+        <button type="button" class="admin-tab active" data-tab="pending-global">Pending recordings</button>
+        <button type="button" class="admin-tab" data-tab="pending-community">Pending words</button>
+        <button type="button" class="admin-tab" data-tab="sd-recordings">Sudanese audio</button>
+      </nav>
+
+      <section class="admin-section" id="tab-pending-global">
+        <h2>Pending global recordings</h2>
+        <p class="muted">Voice clips waiting to become the baseline for a locale/dialect.</p>
+        <div id="pendingGlobalAdmin"></div>
+      </section>
+
+      <section class="admin-section" id="tab-pending-community" hidden>
+        <h2>Pending community words</h2>
+        <p class="muted">Shared words awaiting moderator approval.</p>
+        <div id="pendingCommunityAdmin"></div>
+      </section>
+
+      <section class="admin-section" id="tab-sd-recordings" hidden>
+        <h2>Arabic Sudanese recordings</h2>
+        <p class="muted">Native Sudanese clips override Juba fallback for each word.</p>
+        <label class="field admin-filter">
+          <span>Dialect filter</span>
+          <select id="overviewDialect">
+            <option value="sd" selected>Sudanese (sd)</option>
+            <option value="juba">Juba Arabic (juba)</option>
+            <option value="">All Arabic</option>
+          </select>
+        </label>
+        <div id="sdOverviewList"></div>
+      </section>
+    </div>
+  </div>
+
+  <script type="module" src="./src/admin.js"></script>
+</body>
+</html>

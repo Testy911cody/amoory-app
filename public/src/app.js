@@ -11,7 +11,7 @@ import { initTTS, say, previewVoice, voicesForLocale, unlockAudio } from "./tts.
 import {
   initCommunity, mergeCommunityWords, submitWord, getPendingSubmissions,
   approveSubmission, rejectSubmission, getCommunityAudio, syncShareQueue,
-  fetchOnlinePending, approveOnlineSubmission, rejectOnlineSubmission
+  fetchOnlinePending, approveOnlineSubmission, rejectOnlineSubmission, checkIsAdmin
 } from "./community.js";
 import {
   SUPABASE_READY, getCurrentUser, signInWithEmail, signInWithPassword,
@@ -22,7 +22,7 @@ import {
   initPersonal, mergePersonalWords, getPersonalRecording, savePersonalRecording,
   deletePersonalRecording, loadRecordedKeys, getRecordedKeys, recKey,
   addCustomWord, getAllCustomWords, deleteCustomWord,
-  listPersonalRecordings, aliasSdRecordingsForJuba, syncPersonalQueue
+  listPersonalRecordings, aliasSdRecordingsForJuba, aliasJubaRecordingsForSd, syncPersonalQueue
 } from "./personal.js";
 import {
   loadGlobalRecordings, getGlobalRecording, submitGlobalRecording,
@@ -579,6 +579,16 @@ async function syncWhenOnline() {
   } catch (err) {
     console.warn("[Talk Board] syncWhenOnline:", err);
   }
+}
+
+async function aliasDialectRecordings() {
+  await aliasJubaRecordingsForSd();
+  await aliasSdRecordingsForJuba();
+}
+
+function renderAdminLink(isAdmin) {
+  const row = document.getElementById("adminLinkRow");
+  if (row) row.hidden = !isAdmin;
 }
 
 function renderAccountBadge(user = authUser) {
@@ -1138,7 +1148,7 @@ el.dialectSelect?.addEventListener("change", async e => {
   settings = saveSettings({ dialect: state.dialect, voiceURI: null });
   renderVoiceSelect();
   await loadGlobalRecordings(settings.locale, state.dialect);
-  await aliasSdRecordingsForJuba();
+  await aliasDialectRecordings();
   renderBoard();
   renderLangIndicator();
 });
@@ -1395,6 +1405,7 @@ function setupRecordAuth() {
     if (formEl) formEl.hidden = true;
     showAuthError(errorEl, "");
     await initPersonal(authUser);
+    checkIsAdmin().then(renderAdminLink).catch(() => renderAdminLink(false));
     await wait(600);
     closePanel(panel);
     const pending = pendingRecordAfterAuth;
@@ -1495,10 +1506,12 @@ function setupCaregiverAuth() {
       renderPersonalList();
       renderCustomWordsList();
       renderPendingQueue().catch(() => {});
+      checkIsAdmin().then(renderAdminLink).catch(() => renderAdminLink(false));
     } else {
       statusEl.textContent = t("accountHint");
       signInForm.hidden = false;
       signedInBox.hidden = true;
+      renderAdminLink(false);
     }
   }
 
@@ -1873,9 +1886,14 @@ async function preloadAuthAndData() {
     renderAccountBadge(authUser);
     const tasks = [initCommunity(), loadRecordedKeys()];
     if (authUser && isOnline()) tasks.push(initPersonal(authUser));
-    else if (authUser) await aliasSdRecordingsForJuba();
+    else if (authUser) await aliasDialectRecordings();
     await Promise.allSettled(tasks);
-    if (authUser) await aliasSdRecordingsForJuba();
+    if (authUser) {
+      await aliasDialectRecordings();
+      checkIsAdmin().then(renderAdminLink).catch(() => renderAdminLink(false));
+    } else {
+      renderAdminLink(false);
+    }
     refreshAll();
     if (isOnline()) {
       onAuthChange(user => {

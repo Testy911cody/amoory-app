@@ -50,7 +50,7 @@ async function testEnv({ name, url }) {
       } catch { return ""; }
     });
     const swMatch = swText.match(/CACHE_VERSION = "([^"]+)"/);
-    record(name, "Service worker v16", swMatch?.[1] === "talkboard-v16", swMatch?.[1] || "missing");
+    record(name, "Service worker v17", swMatch?.[1] === "talkboard-v17", swMatch?.[1] || "missing");
 
     // Supabase config
     const supabaseReady = await page.evaluate(async () => {
@@ -94,6 +94,21 @@ async function testEnv({ name, url }) {
       record(name, "More words section header", sectionVisible);
       const moreWords = await page.locator("#board .word").count();
       record(name, "More words tab renders", true, `${moreWords} words or empty message`);
+      const pinBtns = await page.locator("#board .word .pin-home").count();
+      record(name, "Pin-to-main on More words cards", moreWords === 0 || pinBtns === moreWords,
+        moreWords ? `${pinBtns}/${moreWords} cards` : "empty");
+      if (moreWords > 0 && pinBtns > 0) {
+        const firstWordId = await page.locator("#board .word").first().getAttribute("data-word-id");
+        await page.locator("#board .word .pin-home").first().click();
+        await page.waitForTimeout(400);
+        const talkTab = page.locator("#cats .cat", { hasText: /Talk|كلام/i });
+        await talkTab.first().click();
+        await page.waitForTimeout(400);
+        const onHome = firstWordId
+          ? await page.locator(`#board .word[data-word-id="${firstWordId}"]`).count() > 0
+          : false;
+        record(name, "Pin moves word to Talk home", onHome, firstWordId || "");
+      }
     } else {
       record(name, "More words tab", false, "tab not found");
     }

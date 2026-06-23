@@ -2,13 +2,15 @@
    Local IndexedDB cache + optional Supabase cloud sync when signed in. */
 
 import {
-  getSupabase, SUPABASE_READY, getCurrentUser, USER_AUDIO_BUCKET
+  getSupabase, SUPABASE_READY, getCurrentUser, USER_AUDIO_BUCKET, isOnline
 } from "./supabase.js";
 import { ttsLangFor } from "./locales.js";
 import { openTalkBoardDB } from "./idb.js";
+import { fallbackDialectFor } from "./dialect-fallback.js";
 
 const CUSTOM_KEY = "talkboard_custom_words";
 const META_KEY = "talkboard_personal_meta";
+const SYNC_QUEUE_KEY = "talkboard_personal_sync";
 
 let db = null;
 
@@ -96,6 +98,90 @@ function writeMeta(meta) {
   localStorage.setItem(META_KEY, JSON.stringify(meta));
 }
 
+function readSyncQueue() {
+  try {
+    const raw = localStorage.getItem(SYNC_QUEUE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeSyncQueue(items) {
+  localStorage.setItem(SYNC_QUEUE_KEY, JSON.stringify(items));
+}
+
+function queuePersonalSync(entry) {
+  const q = readSyncQueue();
+  const existing = q.findIndex(e =>
+    e.action === entry.action &&
+    e.wordId === entry.wordId &&
+    e.lang === entry.lang &&
+    e.userId === entry.userId
+  );
+  if (existing >= 0) q[existing] = { ...entry, queuedAt: new Date().toISOString() };
+  else q.push({ ...entry, queuedAt: new Date().toISOString() });
+  writeSyncQueue(q);
+}
+
+async function uploadRecordingToCloud(user, wordId, lang, blob) {
+  const supabase = await getSupabase();
+  if (!supabase || !user) return { ok: false, error: "not-configured" };
+  const path = `${user.id}/${wordId}/${lang}.webm`;
+  const up = await uploadAudio(user, path, blob);
+  if (!up.ok) return up;
+  const { error: dbErr } = await supabase.from("user_recordings").upsert({
+    user_id: user.id,
+    word_key: wordId,
+    lang,
+    audio_path: path,
+    updated_at: new Date().toISOString()
+  }, { onConflict: "user_id,word_key,lang" });
+  return dbErr ? { ok: false, error: dbErr.message } : { ok: true };
+}
+
+/** Push queued personal recording uploads when back online. */
+export async function syncPersonalQueue() {
+  if (!SUPABASE_READY || !isOnline()) return { synced: 0, pendingAuth: 0 };
+  const queue = readSyncQueue();
+  if (!queue.length) return { synced: 0, pendingAuth: 0 };
+
+  const user = await getCurrentUser();
+  if (!user) return { synced: 0, pendingAuth: queue.length };
+
+  let synced = 0;
+  const remaining = [];
+  for (const entry of queue) {
+    if (entry.userId !== user.id) {
+      remaining.push(entry);
+      continue;
+    }
+    if (entry.action === "save") {
+      const blob = await getBlobLocal(entry.key);
+      if (!blob) continue;
+      const res = await uploadRecordingToCloud(user, entry.wordId, entry.lang, blob);
+      if (res.ok) synced++;
+      else remaining.push(entry);
+    } else if (entry.action === "delete") {
+      const supabase = await getSupabase();
+      if (supabase) {
+        const path = `${user.id}/${entry.wordId}/${entry.lang}.webm`;
+        await supabase.storage.from(USER_AUDIO_BUCKET).remove([path]);
+        await supabase.from("user_recordings")
+          .delete()
+          .eq("user_id", user.id)
+          .eq("word_key", entry.wordId)
+          .eq("lang", entry.lang);
+        synced++;
+      } else {
+        remaining.push(entry);
+      }
+    }
+  }
+  writeSyncQueue(remaining);
+  return { synced, pendingAuth: remaining.length && !user ? remaining.length : 0 };
+}
+
 async function signedUrl(path) {
   const supabase = await getSupabase();
   if (!supabase) return null;
@@ -132,7 +218,7 @@ async function downloadToCache(key, path) {
 
 /** Fetch cloud recordings + custom words for signed-in user. */
 export async function syncFromCloud(user) {
-  if (!SUPABASE_READY || !user) return { recordings: 0, words: 0 };
+  if (!SUPABASE_READY || !user || !isOnline()) return { recordings: 0, words: 0 };
   const supabase = await getSupabase();
   if (!supabase) return { recordings: 0, words: 0 };
 
@@ -152,6 +238,7 @@ export async function syncFromCloud(user) {
     writeMeta(meta);
   }
 
+  await aliasJubaRecordingsForSd();
   await aliasSdRecordingsForJuba();
 
   let words = 0;
@@ -223,10 +310,32 @@ export async function getPersonalRecording(wordId, locale, dialect) {
   const key = recKey(wordId, locale, dialect);
   const blob = await getBlobLocal(key);
   if (blob) return blob;
+  const fb = fallbackDialectFor(locale, dialect);
+  if (fb) {
+    const fbBlob = await getBlobLocal(recKey(wordId, locale, fb));
+    if (fbBlob) return fbBlob;
+  }
   if (locale === "ar" && dialect === "juba") {
     return getBlobLocal(`${wordId}__ar-SD`);
   }
   return null;
+}
+
+/** Copy Juba blobs to Sudanese cache keys when sd has no recording yet. */
+export async function aliasJubaRecordingsForSd() {
+  await loadRecordedKeys();
+  const jubaLang = recordingLangCode("ar", "juba");
+  const jubaSuffix = `__${jubaLang}`;
+  for (const key of [...recordedKeys]) {
+    if (!key.endsWith(jubaSuffix)) continue;
+    const wordId = key.slice(0, -jubaSuffix.length);
+    const sdKey = recKey(wordId, "ar", "sd");
+    if (recordedKeys.has(sdKey)) continue;
+    const blob = await getBlobLocal(key);
+    if (!blob) continue;
+    await saveBlobLocal(sdKey, blob);
+    recordedKeys.add(sdKey);
+  }
 }
 
 /** Copy Sudanese (ar-SD) blobs to Juba (ar) cache keys when Juba has no recording yet. */
@@ -259,27 +368,13 @@ export async function savePersonalRecording(wordId, locale, dialect, blob, user,
   writeMeta(meta);
 
   if (user && SUPABASE_READY) {
-    const supabase = await getSupabase();
-    if (supabase) {
-      const path = `${user.id}/${wordId}/${lang}.webm`;
-      const up = await uploadAudio(user, path, blob);
-      if (!up.ok) {
-        const err = new Error(up.error || "upload-failed");
-        err.code = "cloud-upload";
-        throw err;
-      }
-      const { error: dbErr } = await supabase.from("user_recordings").upsert({
-        user_id: user.id,
-        word_key: wordId,
-        lang,
-        audio_path: path,
-        updated_at: new Date().toISOString()
-      }, { onConflict: "user_id,word_key,lang" });
-      if (dbErr) {
-        const err = new Error(dbErr.message);
-        err.code = "cloud-db";
-        throw err;
-      }
+    if (!isOnline()) {
+      queuePersonalSync({ action: "save", wordId, lang, key, userId: user.id });
+      return key;
+    }
+    const up = await uploadRecordingToCloud(user, wordId, lang, blob);
+    if (!up.ok) {
+      queuePersonalSync({ action: "save", wordId, lang, key, userId: user.id });
     }
   }
   return key;
@@ -297,7 +392,7 @@ export async function deletePersonalRecording(wordId, locale, dialect, user) {
     writeMeta(meta);
   }
 
-  if (user && SUPABASE_READY) {
+  if (user && SUPABASE_READY && isOnline()) {
     const supabase = await getSupabase();
     if (supabase) {
       const path = `${user.id}/${wordId}/${lang}.webm`;
@@ -308,6 +403,8 @@ export async function deletePersonalRecording(wordId, locale, dialect, user) {
         .eq("word_key", wordId)
         .eq("lang", lang);
     }
+  } else if (user && SUPABASE_READY) {
+    queuePersonalSync({ action: "delete", wordId, lang, userId: user.id });
   }
 }
 
@@ -334,7 +431,7 @@ export async function addCustomWord({ label, englishHint, emoji, category, local
     await savePersonalRecording(wordKey, locale, dialect, audioBlob, user);
   }
 
-  if (user && SUPABASE_READY) {
+  if (user && SUPABASE_READY && isOnline()) {
     const supabase = await getSupabase();
     if (supabase) {
       let audioPath = null;
@@ -397,8 +494,9 @@ export function getRecordingSharePreference(wordId, locale, dialect) {
 export async function initPersonal(user) {
   await openDB();
   await loadRecordedKeys();
-  if (user) {
-    return syncFromCloud(user);
+  if (user && isOnline()) {
+    await syncFromCloud(user);
+    await syncPersonalQueue();
   }
   return { recordings: 0, words: 0 };
 }

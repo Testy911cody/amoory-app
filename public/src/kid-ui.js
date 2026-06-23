@@ -130,10 +130,11 @@ export function computeHomeWords(all, pinnedIds) {
   const pinned = new Set(pinnedIds);
   const homePool = all.filter(w => w.tier === 0 || pinned.has(w.id));
   const core = sortWords(homePool.filter(w => w.isCore));
-  const restPool = homePool.filter(w => !w.isCore);
-  const rest = mixHomeWords(sortWords(restPool))
-    .slice(0, Math.max(0, HOME_MAX_WORDS - core.length));
-  return [...core, ...rest];
+  const pinnedNonCore = sortWords(homePool.filter(w => !w.isCore && pinned.has(w.id)));
+  const restPool = homePool.filter(w => !w.isCore && !pinned.has(w.id));
+  const slotsLeft = Math.max(0, HOME_MAX_WORDS - core.length - pinnedNonCore.length);
+  const rest = mixHomeWords(sortWords(restPool)).slice(0, slotsLeft);
+  return [...core, ...pinnedNonCore, ...rest];
 }
 
 export function homeWordIdSet(all, pinnedIds) {

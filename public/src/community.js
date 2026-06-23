@@ -1,9 +1,10 @@
 /* Talk Board — community word contributions (Phase 1: localStorage + IndexedDB)
    Phase 2: sync approved rows from Supabase — see docs/supabase-community-words.sql */
 
-import { getSupabase, SUPABASE_READY, AUDIO_BUCKET, getCurrentUser } from "./supabase.js";
+import { getSupabase, SUPABASE_READY, AUDIO_BUCKET, getCurrentUser, isOnline } from "./supabase.js";
 import { openTalkBoardDB } from "./idb.js";
 import { moderateForCommunity, logModerationRejection } from "./moderation.js";
+import { fallbackDialectFor } from "./dialect-fallback.js";
 
 const QUEUE_KEY = "talkboard_community_queue";
 const REMOTE_CACHE_KEY = "talkboard_community_remote";
@@ -48,7 +49,20 @@ async function pullApprovedFromSupabase() {
     submittedAt: null
   }));
   localStorage.setItem(REMOTE_CACHE_KEY, JSON.stringify(mapped));
+  for (const row of mapped) {
+    if (row.audioUrl) await cacheCommunityAudioFromUrl(row.id, row.audioUrl);
+  }
   return mapped;
+}
+
+async function cacheCommunityAudioFromUrl(id, audioUrl) {
+  if (!audioUrl || !isOnline()) return;
+  try {
+    const res = await fetch(audioUrl);
+    if (!res.ok) return;
+    const blob = await res.blob();
+    await saveCommunityAudio(id, blob);
+  } catch { /* optional */ }
 }
 
 function readRemoteApproved() {
@@ -62,13 +76,12 @@ function readRemoteApproved() {
 
 export async function initCommunity() {
   await openDB();
-  if (SUPABASE_READY) {
-    try {
-      await pullApprovedFromSupabase();
-      await syncShareQueue();
-    } catch (err) {
-      console.warn("[Talk Board] Supabase community sync skipped:", err?.message || err);
-    }
+  if (!SUPABASE_READY || !isOnline()) return;
+  try {
+    await pullApprovedFromSupabase();
+    await syncShareQueue();
+  } catch (err) {
+    console.warn("[Talk Board] Supabase community sync skipped:", err?.message || err);
   }
 }
 
@@ -95,7 +108,20 @@ function approvedFromAllSources(localeCode, dialectId) {
 }
 
 export function getApprovedWords(localeCode, dialectId) {
-  return approvedFromAllSources(localeCode, dialectId);
+  const primary = approvedFromAllSources(localeCode, dialectId);
+  const fb = fallbackDialectFor(localeCode, dialectId);
+  if (!fb) return primary;
+  const fallback = approvedFromAllSources(localeCode, fb);
+  const seen = new Set(primary.map(w => w.text?.toLowerCase()));
+  const merged = [...primary];
+  for (const w of fallback) {
+    const norm = w.text?.toLowerCase();
+    if (norm && !seen.has(norm)) {
+      merged.push({ ...w, dialectFallback: fb });
+      seen.add(norm);
+    }
+  }
+  return merged;
 }
 
 function audioKey(id) {
@@ -113,22 +139,27 @@ async function saveCommunityAudio(id, blob) {
 }
 
 export async function getCommunityAudio(id) {
-  const remote = readRemoteApproved().find(w => w.id === id);
-  if (remote?.audioUrl) {
-    try {
-      const res = await fetch(remote.audioUrl);
-      if (res.ok) return await res.blob();
-    } catch {
-      /* fall through to IndexedDB */
-    }
-  }
   const database = await openDB();
-  return new Promise(res => {
+  const cached = await new Promise(res => {
     const tx = database.transaction("community_audio", "readonly");
     const rq = tx.objectStore("community_audio").get(audioKey(id));
     rq.onsuccess = () => res(rq.result || null);
     rq.onerror = () => res(null);
   });
+  if (cached) return cached;
+
+  const remote = readRemoteApproved().find(w => w.id === id);
+  if (remote?.audioUrl && isOnline()) {
+    try {
+      const res = await fetch(remote.audioUrl);
+      if (res.ok) {
+        const blob = await res.blob();
+        await saveCommunityAudio(id, blob);
+        return blob;
+      }
+    } catch { /* fall through */ }
+  }
+  return null;
 }
 
 /** Submit a new community word (starts as pending).
@@ -204,7 +235,7 @@ async function uploadEntryToSupabase(entry) {
 
 /** Push any not-yet-synced "share online" entries. Safe to call repeatedly. */
 export async function syncShareQueue() {
-  if (!SUPABASE_READY) return { uploaded: 0, pendingAuth: 0 };
+  if (!SUPABASE_READY || !isOnline()) return { uploaded: 0, pendingAuth: 0 };
   const queue = readQueue();
   let uploaded = 0, pendingAuth = 0;
   for (const entry of queue) {

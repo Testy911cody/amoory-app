@@ -14,6 +14,11 @@ export const SUPABASE_READY =
   !SUPABASE_ANON_KEY.startsWith("your_") &&
   !SUPABASE_ANON_KEY.startsWith("PASTE_");
 
+/** True when the browser reports network connectivity. */
+export function isOnline() {
+  return typeof navigator === "undefined" || navigator.onLine !== false;
+}
+
 /** Storage bucket for contributed dialect recordings (see docs SQL). */
 export const AUDIO_BUCKET = "community-audio";
 
@@ -43,8 +48,17 @@ export function getSupabase() {
 export async function getCurrentUser() {
   const supabase = await getSupabase();
   if (!supabase) return null;
-  const { data } = await supabase.auth.getUser();
-  return data?.user || null;
+  if (!isOnline()) {
+    const { data } = await supabase.auth.getSession();
+    return data?.session?.user || null;
+  }
+  try {
+    const { data } = await supabase.auth.getUser();
+    return data?.user || null;
+  } catch {
+    const { data } = await supabase.auth.getSession();
+    return data?.session?.user || null;
+  }
 }
 
 /** Synthetic email domain for username-only caregiver accounts (must be a valid TLD for Supabase). */
@@ -210,7 +224,7 @@ export async function signOut() {
 
 /** Sign in as the demo doggy account when no session exists (loads cloud recordings). */
 export async function ensureDoggyPreload() {
-  if (!SUPABASE_READY) return null;
+  if (!SUPABASE_READY || !isOnline()) return null;
   const existing = await getCurrentUser();
   if (existing) return existing;
   const res = await signInWithPassword(DOGGY_USERNAME, "1234");
