@@ -125,7 +125,7 @@ export function cardSizeClass(word) {
   return "word--sm";
 }
 
-/** Words on the Talk (home) tab: tier 0 + caregiver pins, mixed & capped. */
+/** Words on the Talk (home) tab: tier 0 + pinned words, mixed & capped. */
 export function computeHomeWords(all, pinnedIds) {
   const pinned = new Set(pinnedIds);
   const homePool = all.filter(w => w.tier === 0 || pinned.has(w.id));

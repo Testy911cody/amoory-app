@@ -16,17 +16,18 @@ import {
 import {
   SUPABASE_READY, getCurrentUser, signInWithEmail, signInWithPassword,
   signUpWithPassword, signOut, onAuthChange, displayUsername, usesTalkboardAccount,
-  validateUsername, validatePin, ensureDoggyPreload
+  validateUsername, validatePin, ensureDoggyPreload, isOnline
 } from "./supabase.js";
 import {
   initPersonal, mergePersonalWords, getPersonalRecording, savePersonalRecording,
   deletePersonalRecording, loadRecordedKeys, getRecordedKeys, recKey,
   addCustomWord, getAllCustomWords, deleteCustomWord,
-  listPersonalRecordings, aliasSdRecordingsForJuba
+  listPersonalRecordings, aliasSdRecordingsForJuba, syncPersonalQueue
 } from "./personal.js";
 import {
   loadGlobalRecordings, getGlobalRecording, submitGlobalRecording,
-  fetchPendingGlobalRecordings, approveGlobalRecording, rejectGlobalRecording
+  fetchPendingGlobalRecordings, approveGlobalRecording, rejectGlobalRecording,
+  syncGlobalQueue
 } from "./global.js";
 import {
   KID_VIEWS, wordsForKidView, cardSizeClass, labelForKidView, getUnlockedTier,
@@ -400,10 +401,6 @@ const state = {
   sentence: []
 };
 
-function isCaregiver() {
-  return !!settings.caregiverActive;
-}
-
 /* ---------------- DOM refs ---------------- */
 const el = {
   cats: document.getElementById("cats"),
@@ -426,16 +423,12 @@ let settingsTab = "general";
 function applyChrome() {
   if (el.title) el.title.textContent = t("title");
   if (el.sayLbl) el.sayLbl.textContent = t("say");
-  const hint = isCaregiver() ? t("hint") : t("kidHint");
-  el.strip?.setAttribute("data-hint", hint);
-  document.body.classList.toggle("kid-mode", !isCaregiver());
-  document.body.classList.toggle("caregiver-mode", isCaregiver());
+  el.strip?.setAttribute("data-hint", t("kidHint"));
   document.documentElement.lang = settings.locale;
   document.body.setAttribute("dir", effectiveDir(settings.locale, settings.secondaryLocale, settings.bilingual));
-  applyCaregiverVisibility();
   renderLangIndicator();
   renderAccountBadge();
-  updateCaregiverAuthLabels();
+  updateAccountAuthLabels();
   updateSettingsPanelLabels();
   updateBoardSection();
   updateContribFormLabels();
@@ -452,24 +445,18 @@ function updateSettingsPanelLabels() {
     pendingWordsHint: "pendingWordsHint",
     pendingLocalTitle: "pendingLocalTitle",
     pendingOnlineTitle: "pendingOnlineTitle",
-    pendingGlobalTitle: "pendingGlobalTitle",
-    caregiverModeLbl: "caregiverMode",
-    exitCaregiverBtn: "exitCaregiver"
+    pendingGlobalTitle: "pendingGlobalTitle"
   };
   for (const [id, key] of Object.entries(map)) {
     const node = document.getElementById(id);
     if (node) node.textContent = t(key);
   }
-  const exitBtn = document.getElementById("exitCaregiverBtn");
-  if (exitBtn) exitBtn.textContent = t("exitCaregiver");
-  const hint = document.getElementById("caregiverHint");
-  if (hint) hint.textContent = t("caregiverHint");
 }
 
 function updateBoardSection() {
   const section = document.getElementById("boardSection");
   if (!section) return;
-  const kidBoard = !isCaregiver() || !settings.fullBoard;
+  const kidBoard = !settings.fullBoard;
   if (kidBoard && state.kidView === "more") {
     section.hidden = false;
     const title = document.getElementById("boardSectionTitle");
@@ -481,7 +468,7 @@ function updateBoardSection() {
   }
 }
 
-function updateCaregiverAuthLabels() {
+function updateAccountAuthLabels() {
   const map = {
     caregiverAccountLbl: "account",
     caregiverAuthStatus: "accountHint",
@@ -553,6 +540,47 @@ function renderLangIndicator() {
   ind.title = `Speaking words in ${loc.name}${d && d.name ? " / " + d.name : ""}`;
 }
 
+function updateOfflineBadge() {
+  const badge = document.getElementById("offlineBadge");
+  if (!badge) return;
+  const offline = !isOnline();
+  badge.hidden = !offline;
+  badge.textContent = offline ? t("offlineMode") : "";
+  badge.title = offline ? t("offlineHint") : "";
+  document.body.classList.toggle("is-offline", offline);
+}
+
+function setupOfflineIndicator() {
+  updateOfflineBadge();
+  window.addEventListener("online", () => {
+    updateOfflineBadge();
+    syncWhenOnline();
+  });
+  window.addEventListener("offline", updateOfflineBadge);
+}
+
+async function syncWhenOnline() {
+  if (!isOnline()) return;
+  try {
+    const tasks = [
+      syncShareQueue(),
+      syncPersonalQueue(),
+      syncGlobalQueue()
+    ];
+    if (authUser) tasks.push(initPersonal(authUser));
+    else tasks.push(loadGlobalRecordings(settings.locale, state.dialect));
+    const results = await Promise.allSettled(tasks);
+    const community = results[0]?.value;
+    const personal = results[1]?.value;
+    const global = results[2]?.value;
+    const uploaded = (community?.uploaded || 0) + (personal?.synced || 0) + (global?.uploaded || 0);
+    if (uploaded > 0) toast(t("backOnlineSynced").replace("{n}", String(uploaded)));
+    refreshAll();
+  } catch (err) {
+    console.warn("[Talk Board] syncWhenOnline:", err);
+  }
+}
+
 function renderAccountBadge(user = authUser) {
   const badge = document.getElementById("accountBadge");
   if (!badge) return;
@@ -569,30 +597,18 @@ function renderAccountBadge(user = authUser) {
   badge.textContent = t("guestAccount");
   badge.title = t("guestAccount");
   badge.setAttribute("aria-label", t("guestAccount"));
-  badge.classList.add("is-guest");
-  badge.classList.remove("is-clickable");
+  badge.classList.add("is-guest", "is-clickable");
   badge.hidden = false;
 }
 
 function openAccountSettings() {
-  const go = () => {
-    if (!isCaregiver()) {
-      settings = saveSettings({ caregiverActive: true });
-      applyChrome();
-      refreshAll();
-    }
-    switchSettingsTab("general");
-    openPanel(el.settingsPanel);
-    document.getElementById("caregiverAuth")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  };
-  if (isCaregiver()) { go(); return; }
-  if (settings.caregiverPin) { openPinPanel(go); return; }
-  go();
+  switchSettingsTab("general");
+  openPanel(el.settingsPanel);
+  document.getElementById("caregiverAuth")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
 function setupAccountBadge() {
   document.getElementById("accountBadge")?.addEventListener("click", () => {
-    if (!authUser) return;
     openAccountSettings();
   });
 }
@@ -658,7 +674,7 @@ function renderVoiceSelect() {
 
 function renderCats() {
   el.cats.innerHTML = "";
-  if (isCaregiver() && settings.fullBoard) {
+  if (settings.fullBoard) {
     CATEGORIES.forEach(c => {
       const b = document.createElement("button");
       b.className = "cat";
@@ -692,7 +708,7 @@ function mergeAllWords(builtin, catId, locale, dialect) {
 
 function getBoardViewKey() {
   return boardViewKey(settings.locale, {
-    fullBoard: isCaregiver() && settings.fullBoard,
+    fullBoard: settings.fullBoard,
     kidView: state.kidView,
     category: state.category
   });
@@ -704,7 +720,7 @@ function wordsForCategory(catId) {
 }
 
 function wordsForBoard() {
-  if (isCaregiver() && settings.fullBoard) {
+  if (settings.fullBoard) {
     return wordsForCategory(state.category);
   }
   return wordsForKidView(
@@ -727,7 +743,6 @@ function reorderBoardCards(board, fromId, toId, viewKey) {
 }
 
 function setupBoardDragDrop(board, viewKey) {
-  if (!isCaregiver()) return;
   let dragId = null;
 
   board.addEventListener("dragstart", e => {
@@ -778,7 +793,7 @@ function renderBoard() {
   el.board.innerHTML = "";
   const list = wordsForBoard();
   const recordedKeys = getRecordedKeys();
-  const kidMode = !isCaregiver() || !settings.fullBoard;
+  const kidMode = !settings.fullBoard;
   const viewKey = getBoardViewKey();
   const defaultColor = KID_VIEWS.find(v => v.id === state.kidView)?.color
     || CATEGORIES.find(c => c.id === state.category)?.color
@@ -808,11 +823,9 @@ function renderBoard() {
     if (w.source === "personal") badges.push(`<span class="src-badge" title="${t("myWords")}">⭐</span>`);
 
     const micHtml = `<button class="mic" title="${t("recordHint")}">🎤</button>`;
-    const dragHtml = isCaregiver()
-      ? `<span class="drag-handle" draggable="true" title="Drag to reorder" aria-hidden="true">⠿</span>`
-      : "";
-    const showPinBtn = isCaregiver() && state.kidView === "more";
-    const showUnpinBtn = isCaregiver() && state.kidView === "home" && pinned && w.tier !== 0;
+    const dragHtml = `<span class="drag-handle" draggable="true" title="Drag to reorder" aria-hidden="true">⠿</span>`;
+    const showPinBtn = state.kidView === "more";
+    const showUnpinBtn = state.kidView === "home" && pinned && w.tier !== 0;
     const pinHtml = showPinBtn
       ? `<button type="button" class="pin-home" title="${t("pinToHome")}" aria-label="${t("pinToHome")}">⭐</button>`
       : showUnpinBtn
@@ -879,9 +892,7 @@ function renderBoard() {
   if (!list.length && state.kidView === "more") {
     const msg = document.createElement("p");
     msg.className = "empty-more muted";
-    msg.textContent = isCaregiver()
-      ? t("noTierMore")
-      : t("moreUnlocking");
+    msg.textContent = settings.fullBoard ? t("noTierMore") : t("moreUnlocking");
     el.board.appendChild(msg);
   }
 }
@@ -1056,11 +1067,9 @@ function refreshAll() {
   renderCats();
   renderBoard();
   renderStrip();
-  if (isCaregiver()) {
-    renderPendingQueue();
-    renderPersonalList();
-    renderCustomWordsList();
-  }
+  renderPendingQueue();
+  renderPersonalList();
+  renderCustomWordsList();
 }
 
 /* ---------------- Settings panel ---------------- */
@@ -1153,150 +1162,19 @@ document.getElementById("secondaryLocaleSelect")?.addEventListener("change", e =
   refreshAll();
 });
 
-/* ---------------- Caregiver mode (tap ⚙️) ---------------- */
-function openCaregiverSettings() {
+/* ---------------- Settings panel ---------------- */
+function openSettings() {
   renderUsageStats();
   switchSettingsTab(settingsTab || "general");
   openPanel(el.settingsPanel);
 }
 
-function requestCaregiverAccess() {
-  if (isCaregiver()) {
-    openCaregiverSettings();
-    return;
-  }
-  if (settings.caregiverPin) {
-    openPinPanel(enterCaregiverMode);
-    return;
-  }
-  enterCaregiverMode();
-}
-
-let pinPanelCallback = null;
-
-function openPinPanel(onSuccess) {
-  const panel = document.getElementById("pinPanel");
-  const input = document.getElementById("pinPanelInput");
-  const errorEl = document.getElementById("pinPanelError");
-  if (!panel || !input) {
-    const pin = prompt(t("enterPin"));
-    if (pin === settings.caregiverPin) onSuccess();
-    else if (pin != null) toast(t("wrongPin"));
-    return;
-  }
-  pinPanelCallback = onSuccess;
-  document.getElementById("pinPanelTitle").textContent = t("enterPin");
-  document.getElementById("pinPanelHint").textContent = t("pinPanelHint");
-  document.getElementById("pinPanelLbl").textContent = t("accountPassword");
-  document.getElementById("pinPanelCancel").textContent = t("cancel");
-  const submitBtn = document.getElementById("pinPanelSubmit");
-  if (submitBtn) submitBtn.textContent = t("pinContinue");
-  input.placeholder = t("accountPinPlaceholder");
-  input.value = "";
-  if (errorEl) {
-    errorEl.textContent = "";
-    errorEl.hidden = true;
-  }
-  openPanel(panel);
-  input.focus();
-}
-
-function closePinPanel() {
-  pinPanelCallback = null;
-  closePanel(document.getElementById("pinPanel"));
-}
-
-function submitPinPanel() {
-  const input = document.getElementById("pinPanelInput");
-  const errorEl = document.getElementById("pinPanelError");
-  const pin = input?.value.trim() || "";
-  if (pin === settings.caregiverPin) {
-    const cb = pinPanelCallback;
-    closePinPanel();
-    cb?.();
-    return;
-  }
-  if (errorEl) {
-    errorEl.textContent = t("wrongPin");
-    errorEl.hidden = false;
-  } else {
-    toast(t("wrongPin"));
-  }
-  input?.focus();
-}
-
-function setupPinPanel() {
-  document.getElementById("pinPanelSubmit")?.addEventListener("click", submitPinPanel);
-  document.getElementById("pinPanelCancel")?.addEventListener("click", closePinPanel);
-  document.getElementById("pinPanelClose")?.addEventListener("click", closePinPanel);
-  document.getElementById("pinPanelInput")?.addEventListener("keydown", e => {
-    if (e.key === "Enter") submitPinPanel();
-  });
-}
-function applyCaregiverVisibility() {
-  const on = isCaregiver();
-  document.querySelectorAll(".caregiver-only").forEach(el => {
-    el.hidden = !on;
-  });
-  const banner = document.getElementById("caregiverBanner");
-  if (banner) banner.hidden = !on;
-  document.getElementById("localebar")?.toggleAttribute("hidden", !on);
-  document.getElementById("contributeBtn")?.toggleAttribute("hidden", !on);
-  if (!on) collapseBoardContribute();
-  const tabs = document.getElementById("settingsTabs");
-  if (tabs) tabs.hidden = !on;
-  if (on) {
-    renderPendingQueue().catch(() => {});
-  } else {
-    settingsTab = "general";
-    document.getElementById("settingsTabGeneral")?.removeAttribute("hidden");
-    document.getElementById("settingsTabPending")?.setAttribute("hidden", "");
-  }
-}
-
-function enterCaregiverMode() {
-  settings = saveSettings({ caregiverActive: true });
-  applyChrome();
-  refreshAll();
-  renderUsageStats();
-  const pendingCount = getPendingSubmissions().length;
-  switchSettingsTab(pendingCount > 0 ? "pending" : "general");
-  openPanel(el.settingsPanel);
-  toast(t("caregiverMode"));
-}
-
-function exitCaregiverMode() {
-  settings = saveSettings({ caregiverActive: false });
-  closePanel(el.settingsPanel);
-  applyChrome();
-  refreshAll();
-}
-
-function renderUsageStats() {
-  const elStats = document.getElementById("usageStats");
-  if (!elStats) return;
-  const unique = getUniqueWordCount();
-  const tier = getUnlockedTier();
-  elStats.textContent = `${unique} ${t("uniqueWords")} · ${t("tierLabel")} ${tier}`;
-  const sel = document.getElementById("unlockTierSelect");
-  if (sel) {
-    const manual = getUsageStore().manualTier;
-    sel.value = manual == null ? "" : String(manual);
-  }
-  const fullBoardToggle = document.getElementById("fullBoardToggle");
-  if (fullBoardToggle) fullBoardToggle.checked = settings.fullBoard;
-  const pinInput = document.getElementById("caregiverPinInput");
-  if (pinInput) pinInput.value = settings.caregiverPin || "";
-}
-
-function setupCaregiverGate() {
-  const btn = document.getElementById("settingsBtn");
-  btn?.addEventListener("click", e => {
+function setupSettings() {
+  document.getElementById("settingsBtn")?.addEventListener("click", e => {
     e.preventDefault();
-    requestCaregiverAccess();
+    openSettings();
   });
 
-  document.getElementById("exitCaregiverBtn")?.addEventListener("click", exitCaregiverMode);
   document.getElementById("resetUsageBtn")?.addEventListener("click", () => {
     resetUsageStats();
     renderUsageStats();
@@ -1315,14 +1193,25 @@ function setupCaregiverGate() {
     updateBoardSection();
     renderBoard();
   });
-  document.getElementById("caregiverPinInput")?.addEventListener("change", e => {
-    const pin = e.target.value.trim();
-    settings = saveSettings({ caregiverPin: pin.length === 4 ? pin : null });
-  });
 
   document.querySelectorAll(".settings-tab").forEach(btn => {
     btn.addEventListener("click", () => switchSettingsTab(btn.dataset.tab));
   });
+}
+
+function renderUsageStats() {
+  const elStats = document.getElementById("usageStats");
+  if (!elStats) return;
+  const unique = getUniqueWordCount();
+  const tier = getUnlockedTier();
+  elStats.textContent = `${unique} ${t("uniqueWords")} · ${t("tierLabel")} ${tier}`;
+  const sel = document.getElementById("unlockTierSelect");
+  if (sel) {
+    const manual = getUsageStore().manualTier;
+    sel.value = manual == null ? "" : String(manual);
+  }
+  const fullBoardToggle = document.getElementById("fullBoardToggle");
+  if (fullBoardToggle) fullBoardToggle.checked = settings.fullBoard;
 }
 
 function renderSettingsLocaleSelects() {
@@ -1933,8 +1822,7 @@ function bootUI() {
   setupCaregiverAuth();
   setupRecordAuth();
   setupCustomWordForm();
-  setupPinPanel();
-  setupCaregiverGate();
+  setupSettings();
   refreshAll();
 }
 
@@ -1967,25 +1855,34 @@ function ensureBoardRendered() {
 
 async function preloadAuthAndData() {
   try {
-    await loadGlobalRecordings(settings.locale, state.dialect);
-    authUser = await getCurrentUser();
-    if (!authUser && SUPABASE_READY) {
-      const doggy = await Promise.race([
-        ensureDoggyPreload(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error("doggy preload timeout")), 12000))
-      ]).catch(() => null);
-      authUser = doggy || authUser;
+    await loadRecordedKeys();
+    if (isOnline()) {
+      await loadGlobalRecordings(settings.locale, state.dialect);
+      authUser = await getCurrentUser();
+      if (!authUser && SUPABASE_READY) {
+        const doggy = await Promise.race([
+          ensureDoggyPreload(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("doggy preload timeout")), 12000))
+        ]).catch(() => null);
+        authUser = doggy || authUser;
+      }
+    } else {
+      authUser = await getCurrentUser();
+      await loadGlobalRecordings(settings.locale, state.dialect);
     }
     renderAccountBadge(authUser);
     const tasks = [initCommunity(), loadRecordedKeys()];
-    if (authUser) tasks.push(initPersonal(authUser));
+    if (authUser && isOnline()) tasks.push(initPersonal(authUser));
+    else if (authUser) await aliasSdRecordingsForJuba();
     await Promise.allSettled(tasks);
     if (authUser) await aliasSdRecordingsForJuba();
     refreshAll();
-    onAuthChange(user => {
-      authUser = user || null;
-      renderAccountBadge(authUser);
-    });
+    if (isOnline()) {
+      onAuthChange(user => {
+        authUser = user || null;
+        renderAccountBadge(authUser);
+      });
+    }
   } catch (err) {
     console.warn("[Talk Board] preloadAuthAndData:", err);
   }
@@ -1994,6 +1891,7 @@ async function preloadAuthAndData() {
 (async function init() {
   initTTS();
   initNativeShell().catch(() => {});
+  setupOfflineIndicator();
   safeBootUI();
   ensureBoardRendered();
   preloadAuthAndData();

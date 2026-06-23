@@ -18,6 +18,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,"Tahoma",
 .account-badge.is-guest{background:#EEF1F3;color:var(--soft);border-color:var(--line);}
 .account-badge.is-clickable{cursor:pointer;}
 .account-badge.is-clickable:active{opacity:.85;}
+.offline-badge{font-size:10px;font-weight:700;background:#FFF3E0;color:#B45309;padding:2px 7px;border-radius:999px;border:1px solid #FCD34D;white-space:nowrap;align-self:center;}
+body.is-offline .topbar{border-bottom-color:#FCD34D;}
 .topbar-actions{display:flex;gap:4px;margin-inline-start:auto;}
 .topbar-corner{flex-shrink:0;}
 .icon-btn{border:none;background:var(--bg);border-radius:12px;width:40px;height:40px;
@@ -36,11 +38,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,"Tahoma",
 .strip-cards{flex:1;display:flex;gap:8px;overflow-x:auto;align-items:center;min-height:72px;}
 .strip-cards:empty::after{content:attr(data-hint);color:var(--soft);font-size:15px;font-weight:600;padding:0 6px;}
 .chip{flex:0 0 auto;width:66px;text-align:center;background:var(--card);border:2px solid var(--line);
-  border-radius:14px;padding:6px 4px 4px;}
+  border-radius:14px;padding:6px 4px 4px;animation:pop .18s ease;}
 .chip .emoji{font-size:30px;line-height:1;}
 .chip .lbl{font-size:11px;font-weight:700;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 @keyframes pop{from{transform:scale(.6);opacity:0;}to{transform:scale(1);opacity:1;}}
-.caregiver-mode .chip{animation:pop .18s ease;}
 
 .strip-btn{flex:0 0 auto;border:none;border-radius:16px;width:60px;height:60px;font-size:12px;
   font-weight:800;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer;}
@@ -63,14 +64,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,"Tahoma",
 
 .board{flex:1;overflow-y:auto;padding:8px 12px 24px;display:grid;
   grid-template-columns:repeat(auto-fill,minmax(108px,1fr));gap:10px;align-content:start;}
-.caregiver-mode .word .drag-handle{
+.word .drag-handle{
   position:absolute;top:4px;left:6px;font-size:14px;line-height:1;color:var(--soft);
   cursor:grab;touch-action:none;padding:4px 2px;opacity:.55;user-select:none;
 }
-body[dir="rtl"] .caregiver-mode .word .drag-handle{left:auto;right:6px;}
-.caregiver-mode .word .drag-handle:active{cursor:grabbing;opacity:1;}
-.caregiver-mode .word.dragging{opacity:.45;transform:scale(.98);}
-.caregiver-mode .word.drag-over{outline:3px dashed var(--accent);outline-offset:-3px;}
+body[dir="rtl"] .word .drag-handle{left:auto;right:6px;}
+.word .drag-handle:active{cursor:grabbing;opacity:1;}
+.word.dragging{opacity:.45;transform:scale(.98);}
+.word.drag-over{outline:3px dashed var(--accent);outline-offset:-3px;}
 .word{position:relative;background:var(--card);border:3px solid var(--line);border-radius:20px;padding:12px 6px 10px;
   display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;box-shadow:var(--shadow);
   transition:transform .08s ease,border-color .15s ease;min-height:124px;justify-content:center;}
@@ -93,7 +94,7 @@ body[dir="rtl"] .caregiver-mode .word .drag-handle{left:auto;right:6px;}
 .kid-mode .strip-btn,.kid-mode .icon-btn{min-width:48px;min-height:48px;}
 .empty-more{grid-column:1/-1;text-align:center;padding:24px;}
 
-/* inline suggest-word (caregiver, below board) */
+/* inline suggest-word (below board) */
 .board-contribute{flex-shrink:0;background:#fff;border-top:2px solid var(--line);padding:0 12px 12px;}
 .board-contribute-toggle{width:100%;display:flex;align-items:center;justify-content:space-between;
   gap:8px;border:none;background:transparent;padding:12px 4px;font-size:15px;font-weight:800;
@@ -105,10 +106,8 @@ body[dir="rtl"] .caregiver-mode .word .drag-handle{left:auto;right:6px;}
 .board-contribute-form .field{margin-bottom:10px;}
 .board-contribute-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:4px;}
 .board-contribute.is-open .board-contribute-body{display:block;}
-.caregiver-banner{background:#E0F0EF;border-radius:12px;padding:12px;margin-bottom:14px;}
-.caregiver-banner p{margin:0 0 8px;}
 
-/* caregiver settings tabs */
+/* settings tabs */
 .settings-tabs{display:flex;gap:4px;padding:8px 12px 0;border-bottom:1px solid var(--line);flex-shrink:0;overflow-x:auto;}
 .settings-tab{border:none;background:transparent;border-radius:10px 10px 0 0;padding:8px 12px;
   font-size:13px;font-weight:700;color:var(--soft);cursor:pointer;white-space:nowrap;position:relative;}
@@ -213,7 +212,7 @@ body[dir="rtl"] .word .src-badge{left:auto;right:8px;}
 .contrib-auth .row{margin-top:6px;}
 .contrib-auth input{flex:1;border:2px solid var(--line);border-radius:12px;padding:10px 12px;font-size:15px;font-weight:600;color:var(--ink);background:#fff;}
 
-/* caregiver / recording auth */
+/* account / recording auth */
 .panel-auth{align-items:center;padding:max(16px,env(safe-area-inset-top)) 16px max(16px,env(safe-area-inset-bottom));}
 .panel-auth .panel-inner{border-radius:20px;max-height:min(90dvh,640px);width:calc(100% - 8px);}
 .auth-panel{padding:14px;}

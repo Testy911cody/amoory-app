@@ -37,16 +37,17 @@
 </head>
 <body class="kid-mode">
   <div class="topbar">
-    <button class="icon-btn topbar-corner" id="settingsBtn" title="Caregiver settings">⚙️</button>
+    <button class="icon-btn topbar-corner" id="settingsBtn" title="Settings">⚙️</button>
     <div class="title" id="appTitle">Talk Board</div>
     <button type="button" id="accountBadge" class="account-badge" aria-live="polite" hidden></button>
+    <span id="offlineBadge" class="offline-badge" hidden aria-live="polite"></span>
     <span id="langIndicator" class="lang-chip" aria-live="polite" title="Current speak language"></span>
     <div class="topbar-actions">
-      <button class="icon-btn caregiver-only" id="contributeBtn" title="Suggest a word" hidden>➕</button>
+      <button class="icon-btn" id="contributeBtn" title="Suggest a word">➕</button>
     </div>
   </div>
 
-  <div class="localebar caregiver-only" id="localebar" hidden>
+  <div class="localebar" id="localebar">
     <label for="localeSelect"><span data-i18n="language">Language</span></label>
     <select id="localeSelect" aria-label="Choose language"></select>
     <label for="dialectSelect"><span data-i18n="dialect">Dialect</span></label>
@@ -67,8 +68,8 @@
   </div>
   <div class="board" id="board"></div>
 
-  <!-- Inline suggest-word (caregiver mode) -->
-  <section class="board-contribute caregiver-only" id="boardContributeSection" hidden aria-labelledby="boardContributeTitle">
+  <!-- Inline suggest-word -->
+  <section class="board-contribute" id="boardContributeSection" aria-labelledby="boardContributeTitle">
     <button type="button" class="board-contribute-toggle" id="boardContributeToggle" aria-expanded="false" aria-controls="boardContributeBody">
       <span id="boardContributeTitle">Suggest a word</span>
       <span class="board-contribute-chevron" aria-hidden="true">▼</span>
@@ -111,7 +112,7 @@
         <h2 id="settingsPanelTitle">Settings</h2>
         <button class="icon-btn" id="settingsClose" aria-label="Close">✕</button>
       </div>
-      <nav class="settings-tabs caregiver-only" id="settingsTabs" hidden aria-label="Caregiver sections">
+      <nav class="settings-tabs" id="settingsTabs" aria-label="Settings sections">
         <button type="button" class="settings-tab active" data-tab="general" id="settingsTabGeneralBtn">Settings</button>
         <button type="button" class="settings-tab" data-tab="pending" id="settingsTabPendingBtn">
           <span class="settings-tab-label" id="settingsTabPendingLbl">Pending words</span>
@@ -119,12 +120,6 @@
         </button>
       </nav>
       <div class="panel-body">
-        <div class="caregiver-banner" id="caregiverBanner" hidden>
-          <p><strong id="caregiverModeLbl">Caregiver mode</strong></p>
-          <button type="button" class="btn-secondary" id="exitCaregiverBtn">Back to kid view</button>
-        </div>
-        <p class="muted caregiver-only" id="caregiverHint" hidden>Tap ⚙️ to open caregiver settings.</p>
-
         <div class="settings-tab-panel" id="settingsTabPending" hidden>
           <h3 id="pendingWordsTitle">Approve new words</h3>
           <p class="muted" id="pendingWordsHint">Review words waiting for approval on this device.</p>
@@ -142,7 +137,7 @@
         </div>
 
         <div class="settings-tab-panel" id="settingsTabGeneral">
-        <div class="caregiver-only" id="caregiverLang" hidden>
+        <div id="settingsLang">
           <label class="field">
             <span>Language</span>
             <select id="settingsLocaleSelect" aria-label="Choose language"></select>
@@ -153,15 +148,10 @@
           </label>
         </div>
 
-        <label class="field caregiver-only" id="caregiverPinField" hidden>
-          <span>Set caregiver PIN (optional, 4 digits)</span>
-          <input type="password" id="caregiverPinInput" inputmode="numeric" maxlength="4" pattern="[0-9]*" placeholder="••••">
-        </label>
-
-        <hr class="caregiver-only" hidden>
-        <h3 class="caregiver-only" hidden>Word learning</h3>
-        <p class="muted caregiver-only" id="usageStats" hidden></p>
-        <label class="field caregiver-only" hidden>
+        <hr>
+        <h3>Word learning</h3>
+        <p class="muted" id="usageStats"></p>
+        <label class="field">
           <span>Unlock words up to tier</span>
           <select id="unlockTierSelect">
             <option value="">Auto (based on use)</option>
@@ -171,31 +161,31 @@
             <option value="3">Tier 3 — all words</option>
           </select>
         </label>
-        <label class="field check caregiver-only" hidden>
+        <label class="field check">
           <input type="checkbox" id="fullBoardToggle">
           <span>Show all categories (advanced)</span>
         </label>
-        <button type="button" class="btn-secondary caregiver-only" id="resetUsageBtn" hidden>Reset word usage stats</button>
+        <button type="button" class="btn-secondary" id="resetUsageBtn">Reset word usage stats</button>
 
-        <hr class="caregiver-only" hidden>
-        <label class="field caregiver-only" hidden>
+        <hr>
+        <label class="field">
           <span>Voice</span>
           <div class="row">
             <select id="voiceSelect" aria-label="Choose voice"></select>
             <button type="button" class="btn-secondary" id="previewVoiceBtn">Preview</button>
           </div>
         </label>
-        <label class="field check caregiver-only" hidden>
+        <label class="field check">
           <input type="checkbox" id="bilingualToggle">
           <span>Show second language on cards</span>
         </label>
-        <label class="field caregiver-only" hidden>
+        <label class="field">
           <span>Second language</span>
           <select id="secondaryLocaleSelect" aria-label="Second language"></select>
         </label>
 
-        <hr class="caregiver-only" id="caregiverAuthHr" hidden>
-        <div class="caregiver-only contrib-auth auth-panel" id="caregiverAuth" hidden>
+        <hr id="caregiverAuthHr">
+        <div class="contrib-auth auth-panel" id="caregiverAuth">
           <h3 id="caregiverAccountLbl">Your account</h3>
           <p class="auth-status muted" id="caregiverAuthStatus">Sign in to save personal recordings in the cloud.</p>
           <p class="auth-error" id="caregiverAuthError" hidden role="alert"></p>
@@ -223,14 +213,14 @@
           </div>
         </div>
 
-        <hr class="caregiver-only" hidden>
-        <h3 class="caregiver-only" hidden>Your personal recordings</h3>
-        <div id="personalRecList" class="caregiver-only" hidden></div>
+        <hr>
+        <h3>Your personal recordings</h3>
+        <div id="personalRecList"></div>
 
-        <hr class="caregiver-only" hidden>
-        <h3 class="caregiver-only" hidden>My words</h3>
-        <div id="customWordsList" class="caregiver-only" hidden></div>
-        <form class="caregiver-only" id="customWordForm" hidden>
+        <hr>
+        <h3>My words</h3>
+        <div id="customWordsList"></div>
+        <form id="customWordForm">
           <label class="field">
             <span>Word label (current language)</span>
             <input type="text" id="customWordLabel" maxlength="80" required placeholder="Type the word">
@@ -351,29 +341,7 @@
     </div>
   </div>
 
-  <!-- Caregiver PIN gate -->
-  <div class="panel panel-auth" id="pinPanel" hidden aria-hidden="true">
-    <div class="panel-inner">
-      <div class="panel-head">
-        <h2 id="pinPanelTitle">Enter PIN</h2>
-        <button class="icon-btn" id="pinPanelClose" aria-label="Close">✕</button>
-      </div>
-      <div class="panel-body">
-        <p class="muted" id="pinPanelHint">Enter the caregiver PIN to open settings.</p>
-        <p class="auth-error" id="pinPanelError" hidden role="alert"></p>
-        <label class="field">
-          <span id="pinPanelLbl">PIN</span>
-          <input type="password" id="pinPanelInput" inputmode="numeric" maxlength="4" pattern="[0-9]*" autocomplete="off" placeholder="••••">
-        </label>
-      </div>
-      <div class="panel-actions auth-actions">
-        <button type="button" class="btn-primary" id="pinPanelSubmit">Continue</button>
-        <button type="button" class="btn-secondary" id="pinPanelCancel">Cancel</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Recording overlay (caregiver) -->
+  <!-- Recording overlay -->
   <div class="recording-overlay" id="recordingOverlay" hidden aria-hidden="true">
     <div class="recording-box">
       <div class="recording-pulse">🎤</div>
