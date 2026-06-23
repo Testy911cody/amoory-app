@@ -10,6 +10,24 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+/** Load `.env.local` from project root (same keys as build.js). */
+export function loadDotEnvLocal(root = path.resolve(__dirname, "..")) {
+  const envPath = path.join(root, ".env.local");
+  if (!fs.existsSync(envPath)) return;
+  for (const line of fs.readFileSync(envPath, "utf8").split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eq = trimmed.indexOf("=");
+    if (eq <= 0) continue;
+    const key = trimmed.slice(0, eq).trim();
+    let val = trimmed.slice(eq + 1).trim();
+    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+      val = val.slice(1, -1);
+    }
+    if (!(key in process.env)) process.env[key] = val;
+  }
+}
+
 export function resolveSupabaseEnv(env = process.env) {
   return {
     supabaseUrl:
@@ -42,6 +60,7 @@ export function injectConfig(targetRoot, env = process.env) {
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const root = path.resolve(__dirname, "..");
+  loadDotEnvLocal(root);
   const result = injectConfig(root);
   console.log(`Wrote ${result.outPath}`);
 }

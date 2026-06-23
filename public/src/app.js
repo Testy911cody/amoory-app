@@ -930,6 +930,7 @@ function closePanel(panel) {
 document.getElementById("settingsClose")?.addEventListener("click", () => closePanel(el.settingsPanel));
 
 function expandBoardContribute({ focus = true } = {}) {
+  closePanel(el.settingsPanel);
   const section = document.getElementById("boardContributeSection");
   const body = document.getElementById("boardContributeBody");
   const toggle = document.getElementById("boardContributeToggle");
@@ -1040,6 +1041,8 @@ function openPinPanel(onSuccess) {
   document.getElementById("pinPanelHint").textContent = t("pinPanelHint");
   document.getElementById("pinPanelLbl").textContent = t("accountPassword");
   document.getElementById("pinPanelCancel").textContent = t("cancel");
+  const submitBtn = document.getElementById("pinPanelSubmit");
+  if (submitBtn) submitBtn.textContent = t("pinContinue");
   input.placeholder = t("accountPinPlaceholder");
   input.value = "";
   if (errorEl) {
