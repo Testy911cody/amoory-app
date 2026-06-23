@@ -351,10 +351,10 @@ let settingsTab = "general";
 
 /* ---------------- Render ---------------- */
 function applyChrome() {
-  el.title.textContent = t("title");
-  el.sayLbl.textContent = t("say");
+  if (el.title) el.title.textContent = t("title");
+  if (el.sayLbl) el.sayLbl.textContent = t("say");
   const hint = isCaregiver() ? t("hint") : t("kidHint");
-  el.strip.setAttribute("data-hint", hint);
+  el.strip?.setAttribute("data-hint", hint);
   document.body.classList.toggle("kid-mode", !isCaregiver());
   document.body.classList.toggle("caregiver-mode", isCaregiver());
   document.documentElement.lang = settings.locale;
@@ -364,6 +364,7 @@ function applyChrome() {
   updateCaregiverAuthLabels();
   updateSettingsPanelLabels();
   updateBoardSection();
+  updateContribFormLabels();
   const settingsBtn = document.getElementById("settingsBtn");
   if (settingsBtn) settingsBtn.title = t("settings");
 }
@@ -430,6 +431,40 @@ function updateCaregiverAuthLabels() {
   if (shareOnlineLbl) shareOnlineLbl.textContent = t("shareWithCommunityHint");
   const customWordShareLbl = document.getElementById("customWordShareLbl");
   if (customWordShareLbl) customWordShareLbl.textContent = t("shareWithCommunityHint");
+}
+
+function updateContribFormLabels() {
+  const map = {
+    boardContributeTitle: "contribute",
+    boardContribWordLbl: "wordText",
+    boardContribCategoryLbl: "category",
+    boardContribEmojiLbl: "emoji",
+    boardContribRecordLbl: "recordHint",
+    boardContribSubmitBtn: "submit",
+    boardShareOnlineLbl: "shareWithCommunityHint"
+  };
+  for (const [id, key] of Object.entries(map)) {
+    const node = document.getElementById(id);
+    if (node) node.textContent = t(key);
+  }
+  const hint = document.getElementById("boardContributeHint");
+  if (hint) hint.textContent = t("contributeHint");
+  const note = document.getElementById("boardContribNote");
+  if (note) note.textContent = t("contributeNote");
+  const textInput = document.getElementById("boardContribText");
+  if (textInput) {
+    textInput.placeholder = settings.locale === "ar"
+      ? "اكتب الكلمة بلغتك"
+      : "Type the word in your language";
+  }
+  const recordBtn = document.getElementById("boardContribRecordBtn");
+  if (recordBtn && !recordBtn.classList.contains("recording") && !recordBtn.classList.contains("recorded")) {
+    recordBtn.textContent = `🎤 ${t("recordHint").replace(/\s*\(.*\)/, "")}`;
+  }
+  const modalRecordBtn = document.getElementById("contribRecordBtn");
+  if (modalRecordBtn && !modalRecordBtn.classList.contains("recording") && !modalRecordBtn.classList.contains("recorded")) {
+    modalRecordBtn.textContent = `🎤 ${t("recordHint").replace(/\s*\(.*\)/, "")}`;
+  }
 }
 
 function renderLangIndicator() {
@@ -847,6 +882,7 @@ async function renderPendingQueue() {
 
 function refreshAll() {
   applyChrome();
+  populateContribCategories();
   renderLocaleSelect();
   renderDialectSelect();
   renderSettingsLocaleSelects();
@@ -871,15 +907,48 @@ function closePanel(panel) {
   panel.setAttribute("aria-hidden", "true");
 }
 
-document.getElementById("settingsClose").onclick = () => closePanel(el.settingsPanel);
-document.getElementById("contributeBtn").onclick = () => {
-  const share = document.getElementById("contribShareOnline");
-  if (share) share.checked = true;
-  openPanel(el.contributePanel);
-};
-document.getElementById("contributeClose").onclick = () => closePanel(el.contributePanel);
+document.getElementById("settingsClose")?.addEventListener("click", () => closePanel(el.settingsPanel));
 
-el.localeSelect.addEventListener("change", e => {
+function expandBoardContribute({ focus = true } = {}) {
+  const section = document.getElementById("boardContributeSection");
+  const body = document.getElementById("boardContributeBody");
+  const toggle = document.getElementById("boardContributeToggle");
+  if (!section || !body || !toggle) return;
+  body.hidden = false;
+  toggle.setAttribute("aria-expanded", "true");
+  section.classList.add("is-open");
+  section.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  if (focus) document.getElementById("boardContribText")?.focus();
+}
+
+function collapseBoardContribute() {
+  const body = document.getElementById("boardContributeBody");
+  const toggle = document.getElementById("boardContributeToggle");
+  const section = document.getElementById("boardContributeSection");
+  if (!body || !toggle) return;
+  body.hidden = true;
+  toggle.setAttribute("aria-expanded", "false");
+  section?.classList.remove("is-open");
+}
+
+document.getElementById("contributeBtn")?.addEventListener("click", () => {
+  expandBoardContribute();
+});
+document.getElementById("contributeClose")?.addEventListener("click", () => closePanel(el.contributePanel));
+document.getElementById("contributeClose2")?.addEventListener("click", () => closePanel(el.contributePanel));
+document.getElementById("boardContributeToggle")?.addEventListener("click", () => {
+  const body = document.getElementById("boardContributeBody");
+  const toggle = document.getElementById("boardContributeToggle");
+  const section = document.getElementById("boardContributeSection");
+  if (!body || !toggle) return;
+  const open = body.hidden;
+  body.hidden = !open;
+  toggle.setAttribute("aria-expanded", open ? "true" : "false");
+  section?.classList.toggle("is-open", open);
+  if (open) document.getElementById("boardContribText")?.focus();
+});
+
+el.localeSelect?.addEventListener("change", e => {
   settings = saveSettings({ locale: e.target.value });
   const loc = getLocale(settings.locale);
   const firstDialect = loc.dialects[0]?.id || "default";
@@ -888,7 +957,7 @@ el.localeSelect.addEventListener("change", e => {
   refreshAll();
 });
 
-el.dialectSelect.addEventListener("change", e => {
+el.dialectSelect?.addEventListener("change", e => {
   state.dialect = e.target.value;
   settings = saveSettings({ dialect: state.dialect, voiceURI: null });
   renderVoiceSelect();
@@ -896,21 +965,21 @@ el.dialectSelect.addEventListener("change", e => {
   renderLangIndicator();
 });
 
-el.voiceSelect.addEventListener("change", e => {
+el.voiceSelect?.addEventListener("change", e => {
   settings = saveSettings({ voiceURI: e.target.value || null });
 });
 
-document.getElementById("previewVoiceBtn").onclick = () => {
+document.getElementById("previewVoiceBtn")?.addEventListener("click", () => {
   const lang = ttsLangFor(settings.locale, state.dialect);
   previewVoice(lang, null, settings.voiceURI);
-};
+});
 
-document.getElementById("bilingualToggle").addEventListener("change", e => {
+document.getElementById("bilingualToggle")?.addEventListener("change", e => {
   settings = saveSettings({ bilingual: e.target.checked });
   refreshAll();
 });
 
-document.getElementById("secondaryLocaleSelect").addEventListener("change", e => {
+document.getElementById("secondaryLocaleSelect")?.addEventListener("change", e => {
   settings = saveSettings({ secondaryLocale: e.target.value || null });
   refreshAll();
 });
@@ -1002,6 +1071,7 @@ function applyCaregiverVisibility() {
   if (banner) banner.hidden = !on;
   document.getElementById("localebar")?.toggleAttribute("hidden", !on);
   document.getElementById("contributeBtn")?.toggleAttribute("hidden", !on);
+  if (!on) collapseBoardContribute();
   const tabs = document.getElementById("settingsTabs");
   if (tabs) tabs.hidden = !on;
   if (on) {
@@ -1042,8 +1112,9 @@ function renderUsageStats() {
     const manual = getUsageStore().manualTier;
     sel.value = manual == null ? "" : String(manual);
   }
-  document.getElementById("fullBoardToggle").checked = settings.fullBoard;
-  document.getElementById("caregiverPinInput").value = settings.caregiverPin || "";
+  document.getElementById("fullBoardToggle")?.checked = settings.fullBoard;
+  const pinInput = document.getElementById("caregiverPinInput");
+  if (pinInput) pinInput.value = settings.caregiverPin || "";
 }
 
 function setupCaregiverGate() {
@@ -1053,26 +1124,26 @@ function setupCaregiverGate() {
     requestCaregiverAccess();
   });
 
-  document.getElementById("exitCaregiverBtn").onclick = exitCaregiverMode;
-  document.getElementById("resetUsageBtn").onclick = () => {
+  document.getElementById("exitCaregiverBtn")?.addEventListener("click", exitCaregiverMode);
+  document.getElementById("resetUsageBtn")?.addEventListener("click", () => {
     resetUsageStats();
     renderUsageStats();
     renderBoard();
     toast("Usage stats reset.");
-  };
-  document.getElementById("unlockTierSelect").onchange = e => {
+  });
+  document.getElementById("unlockTierSelect")?.addEventListener("change", e => {
     const v = e.target.value;
     setManualTier(v === "" ? null : Number(v));
     renderBoard();
     renderUsageStats();
-  };
-  document.getElementById("fullBoardToggle").onchange = e => {
+  });
+  document.getElementById("fullBoardToggle")?.addEventListener("change", e => {
     settings = saveSettings({ fullBoard: e.target.checked });
     renderCats();
     updateBoardSection();
     renderBoard();
-  };
-  document.getElementById("caregiverPinInput").onchange = e => {
+  });
+  document.getElementById("caregiverPinInput")?.addEventListener("change", e => {
     const pin = e.target.value.trim();
     settings = saveSettings({ caregiverPin: pin.length === 4 ? pin : null });
   };
@@ -1127,86 +1198,8 @@ document.getElementById("settingsDialectSelect")?.addEventListener("change", e =
 });
 
 /* ---------------- Contribute form ---------------- */
-let contribRec = null, contribChunks = [], contribBlob = null;
-
-document.getElementById("contribRecordBtn").onclick = async () => {
-  const btn = document.getElementById("contribRecordBtn");
-  if (contribRec?.state === "recording") {
-    contribRec.stop();
-    return;
-  }
-  if (!navigator.mediaDevices?.getUserMedia) {
-    toast(t("micBlocked") || "This device can't record audio."); return;
-  }
-  let stream;
-  try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
-  catch { toast(t("micBlocked") || "Microphone blocked."); return; }
-  contribChunks = [];
-  contribBlob = null;
-  contribRec = new MediaRecorder(stream);
-  contribRec.ondataavailable = e => { if (e.data.size > 0) contribChunks.push(e.data); };
-  contribRec.onstop = async () => {
-    stream.getTracks().forEach(tr => tr.stop());
-    contribBlob = new Blob(contribChunks, { type: contribRec.mimeType || "audio/webm" });
-    btn.textContent = "✓ Recorded";
-    btn.classList.add("recorded");
-  };
-  btn.textContent = "⏹ Stop";
-  btn.classList.add("recording");
-  contribRec.start();
-};
-
-document.getElementById("contribForm").onsubmit = async e => {
-  e.preventDefault();
-  const text = document.getElementById("contribText").value.trim();
-  const category = document.getElementById("contribCategory").value;
-  const emoji = document.getElementById("contribEmoji").value.trim();
-  if (!text) return;
-  const shareOnline = document.getElementById("contribShareOnline")?.checked !== false;
-  if (!shareOnline) {
-    toast(t("shareWithCommunityHint"));
-    return;
-  }
-  const result = await submitCommunityWord({
-    text,
-    category,
-    emoji: emoji || "💬",
-    locale: settings.locale,
-    dialect: state.dialect,
-    audioBlob: contribBlob,
-    shareOnline: true
-  });
-  if (result?.needsAuth) {
-    toast(t("signInForCommunity"));
-    document.getElementById("contribEmail")?.focus();
-    return;
-  }
-  if (result?.rejected) {
-    toast(t("communityRejected"));
-    return;
-  }
-  toast(t("communitySubmitted"));
-  document.getElementById("contribForm").reset();
-  const contribShare = document.getElementById("contribShareOnline");
-  if (contribShare) contribShare.checked = true;
-  contribBlob = null;
-  const btn = document.getElementById("contribRecordBtn");
-  btn.textContent = t("recordHint");
-  btn.classList.remove("recording", "recorded");
-  closePanel(el.contributePanel);
-  renderPendingQueue();
-};
-
-/* ---------------- Strip controls ---------------- */
-document.getElementById("speakBtn").onclick = () => speakSentence();
-document.getElementById("clearBtn").onclick = () => { state.sentence = []; renderStrip(); };
-document.getElementById("backBtn").onclick = () => { state.sentence.pop(); renderStrip(); };
-
-const wait = ms => new Promise(r => setTimeout(r, ms));
-
-/* ---------------- Init ---------------- */
-function populateContribCategories() {
-  const sel = document.getElementById("contribCategory");
+function populateCategorySelect(sel) {
+  if (!sel) return;
   sel.innerHTML = "";
   CATEGORIES.forEach(c => {
     const o = document.createElement("option");
@@ -1216,7 +1209,103 @@ function populateContribCategories() {
   });
 }
 
-/* ---------------- Caregiver account (personal recordings cloud sync) ---------------- */
+function populateContribCategories() {
+  populateCategorySelect(document.getElementById("contribCategory"));
+  populateCategorySelect(document.getElementById("boardContribCategory"));
+}
+
+function resetContribRecordBtn(btn) {
+  if (!btn) return;
+  btn.textContent = `🎤 ${t("recordHint").replace(/\s*\(.*\)/, "")}`;
+  btn.classList.remove("recording", "recorded");
+}
+
+function setupContribForm(prefix, { onSuccess } = {}) {
+  const form = document.getElementById(`${prefix}Form`);
+  const recordBtn = document.getElementById(`${prefix}RecordBtn`);
+  const shareCheckboxId = prefix === "contrib" ? "contribShareOnline" : "boardContribShareOnline";
+  if (!form) return;
+
+  let rec = null;
+  let chunks = [];
+  let blob = null;
+
+  recordBtn?.addEventListener("click", async () => {
+    if (rec?.state === "recording") {
+      rec.stop();
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      toast(t("micBlocked") || "This device can't record audio.");
+      return;
+    }
+    let stream;
+    try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+    catch { toast(t("micBlocked") || "Microphone blocked."); return; }
+    chunks = [];
+    blob = null;
+    rec = new MediaRecorder(stream);
+    rec.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+    rec.onstop = async () => {
+      stream.getTracks().forEach(tr => tr.stop());
+      blob = new Blob(chunks, { type: rec.mimeType || "audio/webm" });
+      recordBtn.textContent = "✓ Recorded";
+      recordBtn.classList.add("recorded");
+    };
+    recordBtn.textContent = "⏹ Stop";
+    recordBtn.classList.add("recording");
+    rec.start();
+  });
+
+  form.addEventListener("submit", async e => {
+    e.preventDefault();
+    const text = document.getElementById(`${prefix}Text`)?.value.trim();
+    const category = document.getElementById(`${prefix}Category`)?.value;
+    const emoji = document.getElementById(`${prefix}Emoji`)?.value.trim();
+    if (!text) return;
+    const shareOnline = document.getElementById(shareCheckboxId)?.checked !== false;
+    if (!shareOnline) {
+      toast(t("shareWithCommunityHint"));
+      return;
+    }
+    const result = await submitCommunityWord({
+      text,
+      category,
+      emoji: emoji || "💬",
+      locale: settings.locale,
+      dialect: state.dialect,
+      audioBlob: blob,
+      shareOnline: true
+    });
+    if (result?.needsAuth) {
+      toast(t("signInForCommunity"));
+      openPanel(el.settingsPanel);
+      document.getElementById("caregiverUsername")?.focus();
+      return;
+    }
+    if (result?.rejected) {
+      toast(t("communityRejected"));
+      return;
+    }
+    toast(t("communitySubmitted"));
+    form.reset();
+    const shareEl = document.getElementById(shareCheckboxId);
+    if (shareEl) shareEl.checked = true;
+    blob = null;
+    resetContribRecordBtn(recordBtn);
+    renderPendingQueue();
+    onSuccess?.();
+  });
+}
+
+/* ---------------- Strip controls ---------------- */
+document.getElementById("speakBtn")?.addEventListener("click", () => speakSentence());
+document.getElementById("clearBtn")?.addEventListener("click", () => { state.sentence = []; renderStrip(); });
+document.getElementById("backBtn")?.addEventListener("click", () => { state.sentence.pop(); renderStrip(); });
+
+const wait = ms => new Promise(r => setTimeout(r, ms));
+
+/* ---------------- Init ---------------- */
 function setupRecordAuth() {
   const panel = document.getElementById("recordAuthPanel");
   if (!panel || !SUPABASE_READY) return;
@@ -1591,10 +1680,12 @@ document.getElementById("recordingCancelBtn")?.addEventListener("click", () => {
 
 function setupContributorAuth() {
   const shareField = document.getElementById("shareOnlineField");
+  const boardShareField = document.getElementById("boardShareOnlineField");
   const authBox = document.getElementById("contribAuth");
   if (!SUPABASE_READY) return; // graceful degradation: stays hidden, fully local
 
   shareField.hidden = false;
+  if (boardShareField) boardShareField.hidden = false;
   authBox.hidden = false;
 
   const statusEl = document.getElementById("authStatus");
@@ -1615,15 +1706,15 @@ function setupContributorAuth() {
     }
   }
 
-  signInBtn.onclick = async () => {
-    const email = emailInput.value.trim();
+  signInBtn?.addEventListener("click", async () => {
+    const email = emailInput?.value.trim();
     if (!email) return;
     signInBtn.disabled = true;
     const res = await signInWithEmail(email);
     signInBtn.disabled = false;
     toast(res.ok ? "Check your email for the sign-in link." : (res.error || "Sign-in failed."));
-  };
-  signOutBtn.onclick = async () => { await signOut(); };
+  });
+  signOutBtn?.addEventListener("click", async () => { await signOut(); });
 
   getCurrentUser().then(reflect).catch(() => reflect(null));
   onAuthChange(async (user) => {
@@ -1637,6 +1728,7 @@ function setupContributorAuth() {
 
 function populateSecondaryLocales() {
   const sel = document.getElementById("secondaryLocaleSelect");
+  if (!sel) return;
   sel.innerHTML = `<option value="">—</option>`;
   LOCALES.forEach(loc => {
     if (loc.code === settings.locale) return;
@@ -1646,7 +1738,7 @@ function populateSecondaryLocales() {
     if (loc.code === settings.secondaryLocale) o.selected = true;
     sel.appendChild(o);
   });
-  document.getElementById("bilingualToggle").checked = settings.bilingual;
+  document.getElementById("bilingualToggle")?.checked = settings.bilingual;
 }
 
 function bootUI() {
@@ -1654,6 +1746,8 @@ function bootUI() {
   populateContribCategories();
   populateSecondaryLocales();
   setupContributorAuth();
+  setupContribForm("contrib", { onSuccess: () => closePanel(el.contributePanel) });
+  setupContribForm("boardContrib");
   setupCaregiverAuth();
   setupRecordAuth();
   setupCustomWordForm();
@@ -1666,16 +1760,17 @@ function bootUI() {
   initTTS();
   initNativeShell().catch(() => {});
   bootUI();
-  try {
-    authUser = await getCurrentUser();
-    if (!authUser && SUPABASE_READY) {
-      authUser = await ensureDoggyPreload();
-    }
-    await Promise.allSettled([initCommunity(), initPersonal(authUser)]);
-    refreshAll();
-  } catch {
-    /* board already rendered from bootUI */
-  }
+  // Cloud auth + sync run after first paint — never block bundled board render.
+  Promise.resolve()
+    .then(async () => {
+      authUser = await getCurrentUser();
+      if (!authUser && SUPABASE_READY) {
+        authUser = await ensureDoggyPreload();
+      }
+      await Promise.allSettled([initCommunity(), initPersonal(authUser)]);
+      refreshAll();
+    })
+    .catch(() => {});
 })();
 
 let unlocked = false;

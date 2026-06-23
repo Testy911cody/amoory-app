@@ -88,6 +88,19 @@ body[dir="rtl"] .caregiver-mode .word .drag-handle{left:auto;right:6px;}
 .kid-mode .cats .cat{font-size:16px;padding:10px 18px;}
 .kid-mode .strip-btn,.kid-mode .icon-btn{min-width:48px;min-height:48px;}
 .empty-more{grid-column:1/-1;text-align:center;padding:24px;}
+
+/* inline suggest-word (caregiver, below board) */
+.board-contribute{flex-shrink:0;background:#fff;border-top:2px solid var(--line);padding:0 12px 12px;}
+.board-contribute-toggle{width:100%;display:flex;align-items:center;justify-content:space-between;
+  gap:8px;border:none;background:transparent;padding:12px 4px;font-size:15px;font-weight:800;
+  color:var(--accent);cursor:pointer;text-align:start;}
+.board-contribute-toggle[aria-expanded="true"] .board-contribute-chevron{transform:rotate(180deg);}
+.board-contribute-chevron{font-size:12px;transition:transform .15s ease;flex-shrink:0;}
+.board-contribute-hint{margin:0 0 10px;font-size:13px;line-height:1.35;}
+.board-contribute-note{margin:8px 0 0;font-size:12px;line-height:1.35;}
+.board-contribute-form .field{margin-bottom:10px;}
+.board-contribute-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:4px;}
+.board-contribute.is-open .board-contribute-body{display:block;}
 .caregiver-banner{background:#E0F0EF;border-radius:12px;padding:12px;margin-bottom:14px;}
 .caregiver-banner p{margin:0 0 8px;}
 

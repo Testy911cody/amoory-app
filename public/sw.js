@@ -1,6 +1,6 @@
 /* Talk Board service worker — makes the app work offline.
    Bump CACHE_VERSION whenever app files change so users get the update. */
-const CACHE_VERSION = "talkboard-v10";
+const CACHE_VERSION = "talkboard-v12";
 const SHELL_URL = "./index.html";
 const CORE_ASSETS = [
   SHELL_URL,
@@ -13,6 +13,8 @@ const CORE_ASSETS = [
   "./src/tts.js",
   "./src/community.js",
   "./src/personal.js",
+  "./src/moderation.js",
+  "./src/native.js",
   "./src/idb.js",
   "./src/priorities.js",
   "./src/usage.js",
@@ -28,12 +30,45 @@ function networkFetch(req) {
   return fetch(new Request(req, { redirect: "follow" }));
 }
 
+function isHttpUrl(url) {
+  return url.protocol === "http:" || url.protocol === "https:";
+}
+
+function isCacheableRequest(req) {
+  try {
+    return isHttpUrl(new URL(req.url));
+  } catch {
+    return false;
+  }
+}
+
 function isCacheable(res) {
   return res && res.ok && res.type === "basic";
 }
 
 function isNavigation(req) {
   return req.mode === "navigate" || req.destination === "document";
+}
+
+function isAppScript(url) {
+  return url.pathname.includes("/src/") && url.pathname.endsWith(".js");
+}
+
+function shouldBypassSW(url) {
+  return url.hostname === "static.cloudflareinsights.com";
+}
+
+function safeCachePut(cache, req, res) {
+  if (!isCacheable(res) || !isCacheableRequest(req)) return;
+  try {
+    cache.put(req, res);
+  } catch {
+    /* ignore unsupported schemes / opaque responses */
+  }
+}
+
+function offlineResponse() {
+  return new Response("Offline", { status: 503, statusText: "Offline" });
 }
 
 // Install: pre-cache the core app shell (never cache "./" — it may be a redirect)
@@ -43,7 +78,7 @@ self.addEventListener("install", (event) => {
       await Promise.allSettled(
         CORE_ASSETS.map((url) =>
           networkFetch(url).then((res) => {
-            if (isCacheable(res)) return cache.put(url, res);
+            if (isCacheable(res)) return safeCachePut(cache, url, res);
           })
         )
       );
@@ -64,18 +99,30 @@ self.addEventListener("activate", (event) => {
 
 // Fetch strategy:
 // - HTML navigation: network-first (host may rewrite/redirect amoory paths)
+// - App JS modules: network-first (avoid stale broken bundles after deploy)
 // - Other same-origin assets: cache-first
 // - Remote: network-first with cache fallback
 self.addEventListener("fetch", (event) => {
   const req = event.request;
   if (req.method !== "GET") return;
 
-  const url = new URL(req.url);
+  let url;
+  try {
+    url = new URL(req.url);
+  } catch {
+    return;
+  }
+
+  // Skip extension/custom schemes — caching them throws in Chrome.
+  if (!isHttpUrl(url)) return;
+
+  // Let analytics beacons go straight to the network (no SW intercept).
+  if (shouldBypassSW(url)) return;
+
   const isSameOrigin = url.origin === self.location.origin;
 
   if (isSameOrigin && isNavigation(req)) {
     // Let the browser handle /index.html → trailing-slash redirects from the host.
-    // Intercepting those navigations in a SW often yields net::ERR_FAILED in Chrome.
     if (url.pathname.endsWith("/index.html")) return;
 
     event.respondWith(
@@ -83,11 +130,11 @@ self.addEventListener("fetch", (event) => {
         .then((res) => {
           if (isCacheable(res)) {
             const copy = res.clone();
-            caches.open(CACHE_VERSION).then((c) => c.put(SHELL_URL, copy));
+            caches.open(CACHE_VERSION).then((c) => safeCachePut(c, SHELL_URL, copy));
           }
           return res;
         })
-        .catch(() => caches.match(SHELL_URL))
+        .catch(() => caches.match(SHELL_URL).then((r) => r || offlineResponse()))
     );
     return;
   }
@@ -99,11 +146,11 @@ self.addEventListener("fetch", (event) => {
         return networkFetch(req).then((res) => {
           if (isCacheable(res)) {
             const copy = res.clone();
-            caches.open(CACHE_VERSION).then((c) => c.put(req, copy));
+            caches.open(CACHE_VERSION).then((c) => safeCachePut(c, req, copy));
           }
           return res;
         });
-      })
+      }).catch(() => offlineResponse())
     );
     return;
   }
@@ -113,10 +160,10 @@ self.addEventListener("fetch", (event) => {
       .then((res) => {
         if (isCacheable(res)) {
           const copy = res.clone();
-          caches.open(CACHE_VERSION).then((c) => c.put(req, copy));
+          caches.open(CACHE_VERSION).then((c) => safeCachePut(c, req, copy));
         }
         return res;
       })
-      .catch(() => caches.match(req))
+      .catch(() => caches.match(req).then((r) => r || offlineResponse()))
   );
 });

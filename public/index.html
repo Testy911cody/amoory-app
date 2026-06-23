@@ -66,6 +66,43 @@
   </div>
   <div class="board" id="board"></div>
 
+  <!-- Inline suggest-word (caregiver mode) -->
+  <section class="board-contribute caregiver-only" id="boardContributeSection" hidden aria-labelledby="boardContributeTitle">
+    <button type="button" class="board-contribute-toggle" id="boardContributeToggle" aria-expanded="false" aria-controls="boardContributeBody">
+      <span id="boardContributeTitle">Suggest a word</span>
+      <span class="board-contribute-chevron" aria-hidden="true">▼</span>
+    </button>
+    <div class="board-contribute-body" id="boardContributeBody" hidden>
+      <p class="muted board-contribute-hint" id="boardContributeHint"></p>
+      <form class="board-contribute-form" id="boardContribForm">
+        <label class="field">
+          <span id="boardContribWordLbl">Word</span>
+          <input type="text" id="boardContribText" required maxlength="80" placeholder="">
+        </label>
+        <label class="field">
+          <span id="boardContribCategoryLbl">Category</span>
+          <select id="boardContribCategory" required></select>
+        </label>
+        <label class="field">
+          <span id="boardContribEmojiLbl">Emoji (optional)</span>
+          <input type="text" id="boardContribEmoji" maxlength="4" placeholder="💬">
+        </label>
+        <div class="field">
+          <span id="boardContribRecordLbl">Record audio (optional)</span>
+          <button type="button" class="btn-record" id="boardContribRecordBtn">🎤 Record</button>
+        </div>
+        <label class="field check" id="boardShareOnlineField" hidden>
+          <input type="checkbox" id="boardContribShareOnline" checked>
+          <span id="boardShareOnlineLbl">Contribute free words to the community dialect library</span>
+        </label>
+        <p class="muted board-contribute-note" id="boardContribNote"></p>
+        <div class="board-contribute-actions">
+          <button type="submit" class="btn-primary" id="boardContribSubmitBtn">Submit</button>
+        </div>
+      </form>
+    </div>
+  </section>
+
   <!-- Settings panel -->
   <div class="panel" id="settingsPanel" hidden aria-hidden="true">
     <div class="panel-inner">
@@ -270,7 +307,7 @@
           <p class="muted">Submissions stay pending until approved. Approved words appear on the board for this device. When online sharing is set up and you sign in, contributions are reviewed by a moderator before going live for everyone.</p>
         </div>
         <div class="panel-actions">
-          <button type="button" class="btn-secondary" id="contributeClose2" onclick="document.getElementById('contributeClose').click()">Cancel</button>
+          <button type="button" class="btn-secondary" id="contributeClose2">Cancel</button>
           <button type="submit" class="btn-primary">Submit</button>
         </div>
       </form>
