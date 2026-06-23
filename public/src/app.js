@@ -1112,7 +1112,8 @@ function renderUsageStats() {
     const manual = getUsageStore().manualTier;
     sel.value = manual == null ? "" : String(manual);
   }
-  document.getElementById("fullBoardToggle")?.checked = settings.fullBoard;
+  const fullBoardToggle = document.getElementById("fullBoardToggle");
+  if (fullBoardToggle) fullBoardToggle.checked = settings.fullBoard;
   const pinInput = document.getElementById("caregiverPinInput");
   if (pinInput) pinInput.value = settings.caregiverPin || "";
 }
@@ -1146,7 +1147,7 @@ function setupCaregiverGate() {
   document.getElementById("caregiverPinInput")?.addEventListener("change", e => {
     const pin = e.target.value.trim();
     settings = saveSettings({ caregiverPin: pin.length === 4 ? pin : null });
-  };
+  });
 
   document.querySelectorAll(".settings-tab").forEach(btn => {
     btn.addEventListener("click", () => switchSettingsTab(btn.dataset.tab));
@@ -1738,7 +1739,8 @@ function populateSecondaryLocales() {
     if (loc.code === settings.secondaryLocale) o.selected = true;
     sel.appendChild(o);
   });
-  document.getElementById("bilingualToggle")?.checked = settings.bilingual;
+  const bilingualToggle = document.getElementById("bilingualToggle");
+  if (bilingualToggle) bilingualToggle.checked = settings.bilingual;
 }
 
 function bootUI() {
