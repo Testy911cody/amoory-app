@@ -361,6 +361,7 @@ function applyChrome() {
   document.body.setAttribute("dir", effectiveDir(settings.locale, settings.secondaryLocale, settings.bilingual));
   applyCaregiverVisibility();
   renderLangIndicator();
+  renderAccountBadge();
   updateCaregiverAuthLabels();
   updateSettingsPanelLabels();
   updateBoardSection();
@@ -476,6 +477,25 @@ function renderLangIndicator() {
   const dia = (d && d.nativeName && d.nativeName !== loc.nativeName) ? ` · ${d.nativeName}` : "";
   ind.textContent = `${base}${dia}`;
   ind.title = `Speaking words in ${loc.name}${d && d.name ? " / " + d.name : ""}`;
+}
+
+function renderAccountBadge(user = authUser) {
+  const badge = document.getElementById("accountBadge");
+  if (!badge) return;
+  if (user) {
+    const name = displayUsername(user);
+    badge.textContent = name;
+    badge.title = `${t("signedInAs")} ${name}`;
+    badge.setAttribute("aria-label", badge.title);
+    badge.classList.remove("is-guest");
+    badge.hidden = false;
+    return;
+  }
+  badge.textContent = t("guestAccount");
+  badge.title = t("guestAccount");
+  badge.setAttribute("aria-label", t("guestAccount"));
+  badge.classList.add("is-guest");
+  badge.hidden = false;
 }
 
 function wordLabelHtml(w) {
@@ -1325,6 +1345,7 @@ function setupRecordAuth() {
   async function onAuthSuccess(user, mode) {
     const sessionUser = await getCurrentUser();
     authUser = sessionUser || user;
+    renderAccountBadge(authUser);
     if (!authUser) {
       showAuthError(errorEl, t("accountConfirmNeeded"));
       return;
@@ -1419,6 +1440,7 @@ function setupCaregiverAuth() {
 
   async function reflect(user) {
     authUser = user || null;
+    renderAccountBadge(authUser);
     showAuthError(errorEl, "");
     if (user) {
       statusEl.textContent = t("accountHint");
@@ -1795,8 +1817,13 @@ async function preloadAuthAndData() {
       ]).catch(() => null);
       authUser = doggy || authUser;
     }
+    renderAccountBadge(authUser);
     await Promise.allSettled([initCommunity(), initPersonal(authUser)]);
     refreshAll();
+    onAuthChange(user => {
+      authUser = user || null;
+      renderAccountBadge(authUser);
+    });
   } catch (err) {
     console.warn("[Talk Board] preloadAuthAndData:", err);
   }
