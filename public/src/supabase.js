@@ -17,6 +17,9 @@ export const SUPABASE_READY =
 /** Storage bucket for contributed dialect recordings (see docs SQL). */
 export const AUDIO_BUCKET = "community-audio";
 
+/** Public bucket for approved global baseline recordings. */
+export const GLOBAL_AUDIO_BUCKET = "global-audio";
+
 /** Private bucket for caregiver personal recordings. */
 export const USER_AUDIO_BUCKET = "user-audio";
 

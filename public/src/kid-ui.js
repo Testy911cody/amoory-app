@@ -125,21 +125,31 @@ export function cardSizeClass(word) {
   return "word--sm";
 }
 
+/** Words on the Talk (home) tab: tier 0 + caregiver pins, mixed & capped. */
+export function computeHomeWords(all, pinnedIds) {
+  const pinned = new Set(pinnedIds);
+  const homePool = all.filter(w => w.tier === 0 || pinned.has(w.id));
+  const core = sortWords(homePool.filter(w => w.isCore));
+  const restPool = homePool.filter(w => !w.isCore);
+  const rest = mixHomeWords(sortWords(restPool))
+    .slice(0, Math.max(0, HOME_MAX_WORDS - core.length));
+  return [...core, ...rest];
+}
+
+export function homeWordIdSet(all, pinnedIds) {
+  return new Set(computeHomeWords(all, pinnedIds).map(w => w.id));
+}
+
 /** Words for the active kid view. */
 export function wordsForKidView(viewId, mergeFn, locale, dialect) {
   const unlocked = getUnlockedTier();
   const all = allWordsFlat(mergeFn, locale, dialect).filter(w => isWordVisible(w, unlocked));
-  const pinned = new Set(getPinnedWords());
+  const pinnedIds = getPinnedWords();
   const orderKey = boardViewKey(locale, { kidView: viewId });
   const finish = list => applySavedOrder(list, orderKey);
 
   if (viewId === "home") {
-    let home = all.filter(w => w.tier === 0 || pinned.has(w.id));
-    const core = sortWords(home.filter(w => w.isCore));
-    const restPool = home.filter(w => !w.isCore);
-    const rest = mixHomeWords(sortWords(restPool))
-      .slice(0, Math.max(0, HOME_MAX_WORDS - core.length));
-    return finish([...core, ...rest]);
+    return finish(computeHomeWords(all, pinnedIds));
   }
 
   if (viewId === "need") {
@@ -156,7 +166,8 @@ export function wordsForKidView(viewId, mergeFn, locale, dialect) {
   }
 
   if (viewId === "more") {
-    return finish(sortWords(all.filter(w => w.tier >= 2)));
+    const homeIds = homeWordIdSet(all, pinnedIds);
+    return finish(sortWords(all.filter(w => !homeIds.has(w.id))));
   }
 
   return finish(sortWords(all.filter(w => w.tier === 0)));

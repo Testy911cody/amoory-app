@@ -152,6 +152,8 @@ export async function syncFromCloud(user) {
     writeMeta(meta);
   }
 
+  await aliasSdRecordingsForJuba();
+
   let words = 0;
   const { data: cloudWords, error: wordErr } = await supabase
     .from("user_words")
@@ -219,7 +221,27 @@ export function mergePersonalWords(builtinWords, categoryId, locale, dialect) {
 
 export async function getPersonalRecording(wordId, locale, dialect) {
   const key = recKey(wordId, locale, dialect);
-  return getBlobLocal(key);
+  const blob = await getBlobLocal(key);
+  if (blob) return blob;
+  if (locale === "ar" && dialect === "juba") {
+    return getBlobLocal(`${wordId}__ar-SD`);
+  }
+  return null;
+}
+
+/** Copy Sudanese (ar-SD) blobs to Juba (ar) cache keys when Juba has no recording yet. */
+export async function aliasSdRecordingsForJuba() {
+  await loadRecordedKeys();
+  for (const key of [...recordedKeys]) {
+    if (!key.endsWith("__ar-SD")) continue;
+    const wordId = key.slice(0, -"__ar-SD".length);
+    const jubaKey = recKey(wordId, "ar", "juba");
+    if (recordedKeys.has(jubaKey)) continue;
+    const blob = await getBlobLocal(key);
+    if (!blob) continue;
+    await saveBlobLocal(jubaKey, blob);
+    recordedKeys.add(jubaKey);
+  }
 }
 
 export async function savePersonalRecording(wordId, locale, dialect, blob, user, { shareWithCommunity = false } = {}) {

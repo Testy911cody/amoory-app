@@ -22,15 +22,19 @@ import {
   initPersonal, mergePersonalWords, getPersonalRecording, savePersonalRecording,
   deletePersonalRecording, loadRecordedKeys, getRecordedKeys, recKey,
   addCustomWord, getAllCustomWords, deleteCustomWord,
-  listPersonalRecordings
+  listPersonalRecordings, aliasSdRecordingsForJuba
 } from "./personal.js";
+import {
+  loadGlobalRecordings, getGlobalRecording, submitGlobalRecording,
+  fetchPendingGlobalRecordings, approveGlobalRecording, rejectGlobalRecording
+} from "./global.js";
 import {
   KID_VIEWS, wordsForKidView, cardSizeClass, labelForKidView, getUnlockedTier,
   boardViewKey, applySavedOrder
 } from "./kid-ui.js";
 import {
   recordWordUse, getUniqueWordCount, setManualTier, resetUsageStats, getUsageStore,
-  setCardOrderForView
+  setCardOrderForView, pinWord, unpinWord, isWordPinned
 } from "./usage.js";
 import { moderateWordEntry, logModerationRejection } from "./moderation.js";
 import { initNativeShell } from "./native.js";
@@ -45,6 +49,14 @@ function toast(msg) {
 
 function t(key) {
   return uiString(settings.locale, key);
+}
+
+function labelForWordId(wordId) {
+  for (const list of Object.values(WORDS)) {
+    const w = list.find(x => x.id === wordId);
+    if (w) return labelForWord(w, settings.locale, state.dialect);
+  }
+  return wordId;
 }
 
 /* ---------------- Audio helpers ---------------- */
@@ -173,6 +185,14 @@ async function shareRecordingWithCommunity(word, blob) {
   if (!word || !blob?.size) return { skipped: true };
   const user = authUser || await getCurrentUser();
   if (!user) return { needsAuth: true };
+  if (word.source === "builtin" || (!word.source && word.id && !word.communityId)) {
+    return submitGlobalRecording({
+      wordId: word.id,
+      locale: settings.locale,
+      dialect: state.dialect,
+      audioBlob: blob
+    });
+  }
   return submitWord({
     text: labelForWord(word, settings.locale, state.dialect),
     category: word.categoryId || state.category,
@@ -215,8 +235,8 @@ async function finishRecordingSave(w, blob, card) {
     toast(t("communityRejected"));
     return;
   }
-  if (result?.entry) {
-    toast(t("communitySubmitted"));
+  if (result?.ok || result?.entry) {
+    toast(result?.ok ? t("communitySubmitted") : t("communitySubmitted"));
     renderPendingQueue();
   }
 }
@@ -286,11 +306,15 @@ async function startRecording(word, cardEl) {
 
 /* ---------------- Audio playback priority ----------------
    1. Personal recording (local / cloud cache) for exact lang
-   2. Approved community audio (lang-matched)
-   3. Web Speech API TTS of translated native text */
+   2. Approved global baseline recording
+   3. Approved community audio (lang-matched)
+   4. Web Speech API TTS of translated native text */
 async function speakWord(word) {
   const personal = await getPersonalRecording(word.id, settings.locale, state.dialect);
   if (personal) { await playBlob(personal); return; }
+
+  const global = await getGlobalRecording(word.id, settings.locale, state.dialect);
+  if (global) { await playBlob(global); return; }
 
   if (word.source === "community" && word.communityId) {
     const comm = await getCommunityAudio(word.communityId);
@@ -724,27 +748,34 @@ function renderBoard() {
     if (w.source === "community") card.classList.add("community");
     if (w.source === "personal") card.classList.add("personal");
     if (w.isCore) card.classList.add("core");
+    if (pinned && w.tier !== 0) card.classList.add("home-pinned");
 
     const badges = [];
     if (recordedKeys.has(key)) badges.push(`<span class="reciic">🎙️</span>`);
     if (w.source === "community") badges.push(`<span class="src-badge" title="${t("sourceCommunity")}">👥</span>`);
     if (w.source === "personal") badges.push(`<span class="src-badge" title="${t("myWords")}">⭐</span>`);
 
-    const micHtml = isCaregiver()
-      ? `<button class="mic" title="Record your voice">🎤</button>`
-      : "";
+    const micHtml = `<button class="mic" title="${t("recordHint")}">🎤</button>`;
     const dragHtml = isCaregiver()
       ? `<span class="drag-handle" draggable="true" title="Drag to reorder" aria-hidden="true">⠿</span>`
       : "";
+    const pinned = isWordPinned(w.id);
+    const showPinBtn = isCaregiver() && state.kidView === "more";
+    const showUnpinBtn = isCaregiver() && state.kidView === "home" && pinned && w.tier !== 0;
+    const pinHtml = showPinBtn
+      ? `<button type="button" class="pin-home" title="${t("pinToHome")}" aria-label="${t("pinToHome")}">⭐</button>`
+      : showUnpinBtn
+        ? `<button type="button" class="pin-home is-pinned" title="${t("unpinFromHome")}" aria-label="${t("unpinFromHome")}">★</button>`
+        : "";
     const labelHtml = kidMode && (w.tier === 0 || w.isCore)
       ? `<span class="lbl lbl-min">${labelForWord(w, settings.locale, state.dialect)}</span>`
       : wordLabelHtml(w);
 
-    card.innerHTML = dragHtml + micHtml
+    card.innerHTML = dragHtml + micHtml + pinHtml
       + `<span class="emoji">${w.emoji}</span>${labelHtml}${badges.join("")}`;
 
     card.onclick = async (e) => {
-      if (e.target.closest(".mic") || e.target.closest(".drag-handle")) return;
+      if (e.target.closest(".mic") || e.target.closest(".drag-handle") || e.target.closest(".pin-home")) return;
       recordWordUse(w.id);
       await speakWord(w);
       state.sentence.push(w);
@@ -773,11 +804,27 @@ function renderBoard() {
       handle.addEventListener("pointerdown", (e) => e.stopPropagation());
       handle.addEventListener("click", (e) => e.stopPropagation());
     }
+    const pinBtn = card.querySelector(".pin-home");
+    if (pinBtn) {
+      pinBtn.addEventListener("pointerdown", (e) => e.stopPropagation());
+      pinBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (showUnpinBtn) {
+          unpinWord(w.id);
+          toast(t("unpinnedFromHome"));
+        } else {
+          pinWord(w.id);
+          toast(t("pinnedToHome"));
+        }
+        renderBoard();
+        if (state.kidView === "more" || state.kidView === "home") updateBoardSection();
+      });
+    }
 
     if (isCaregiver()) {
       let pressTimer = null;
       card.addEventListener("pointerdown", (e) => {
-        if (e.target.closest(".mic") || e.target.closest(".drag-handle")) return;
+        if (e.target.closest(".mic") || e.target.closest(".drag-handle") || e.target.closest(".pin-home")) return;
         pressTimer = setTimeout(() => startRecording(w, card), 800);
       });
       const cancelPress = () => { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; } };
@@ -841,18 +888,19 @@ function updatePendingBadge(count) {
   }
 }
 
-function renderPendingRow(item, { online = false, canModerate = true } = {}) {
+function renderPendingRow(item, { online = false, canModerate = true, globalRec = false } = {}) {
   const row = document.createElement("div");
   row.className = "pending-row";
+  const label = globalRec && item.wordId ? labelForWordId(item.wordId) : item.text;
   const actions = canModerate
     ? `<span class="pending-actions">
-        <button type="button" class="btn-approve" data-id="${item.id}" data-online="${online ? "1" : ""}">${t("approve")}</button>
-        <button type="button" class="btn-reject" data-id="${item.id}" data-online="${online ? "1" : ""}">${t("reject")}</button>
+        <button type="button" class="btn-approve" data-id="${item.id}" data-online="${online ? "1" : ""}" data-global="${globalRec ? "1" : ""}">${t("approve")}</button>
+        <button type="button" class="btn-reject" data-id="${item.id}" data-online="${online ? "1" : ""}" data-global="${globalRec ? "1" : ""}">${t("reject")}</button>
       </span>`
     : `<span class="muted">${t("pendingNote")}</span>`;
   row.innerHTML = `
-    <span>${item.emoji} <strong>${item.text}</strong>
-      <small>(${item.locale}${item.dialect ? ` / ${item.dialect}` : ""} · ${item.category})</small>
+    <span>${globalRec ? "🎙️" : (item.emoji || "💬")} <strong>${label}</strong>
+      <small>(${item.locale}${item.dialect ? ` / ${item.dialect}` : ""}${globalRec ? " · recording" : ` · ${item.category || ""}`})</small>
     </span>
     ${actions}`;
   return row;

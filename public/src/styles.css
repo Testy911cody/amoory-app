@@ -138,6 +138,13 @@ body[dir="rtl"] .word .reciic{right:auto;left:8px;}
 .word.personal{border-style:dotted;border-color:var(--c-need)!important;}
 .word .src-badge{position:absolute;bottom:6px;left:8px;font-size:12px;opacity:.7;}
 body[dir="rtl"] .word .src-badge{left:auto;right:8px;}
+.word.home-pinned{border-color:var(--c-more)!important;box-shadow:0 0 0 2px rgba(91,134,196,.25);}
+.pin-home{position:absolute;bottom:6px;left:50%;transform:translateX(-50%);
+  width:34px;height:34px;border-radius:50%;border:none;background:var(--bg);color:var(--soft);
+  font-size:16px;line-height:1;display:flex;align-items:center;justify-content:center;
+  cursor:pointer;z-index:2;opacity:.85;}
+.pin-home:hover,.pin-home:focus-visible{opacity:1;background:#FFF8E6;color:#C9A227;}
+.pin-home.is-pinned{background:#FFF8E6;color:#C9A227;opacity:1;}
 
 /* recording overlay */
 .recording-overlay{position:fixed;inset:0;background:rgba(30,58,69,.55);z-index:60;

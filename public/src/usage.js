@@ -101,7 +101,26 @@ export function getPinnedWords() {
 }
 
 export function setPinnedWords(ids) {
-  localStorage.setItem(PIN_KEY, JSON.stringify(ids));
+  localStorage.setItem(PIN_KEY, JSON.stringify([...new Set(ids.filter(Boolean))]));
+}
+
+export function isWordPinned(wordId) {
+  return getPinnedWords().includes(wordId);
+}
+
+export function pinWord(wordId) {
+  if (!wordId) return getPinnedWords();
+  const ids = getPinnedWords();
+  if (!ids.includes(wordId)) ids.push(wordId);
+  setPinnedWords(ids);
+  return ids;
+}
+
+export function unpinWord(wordId) {
+  if (!wordId) return getPinnedWords();
+  const ids = getPinnedWords().filter(id => id !== wordId);
+  setPinnedWords(ids);
+  return ids;
 }
 
 export function isWordVisible(word, unlockedTier) {
