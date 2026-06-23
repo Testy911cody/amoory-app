@@ -24,7 +24,9 @@ export function fallbackDialectFor(locale, dialect) {
 /** Dialect ids to load/cache for playback (active + sibling when shared). */
 export function dialectsToLoad(locale, dialect) {
   const sibling = siblingDialectFor(locale, dialect);
-  return sibling ? [dialect, sibling] : dialect ? [dialect] : [];
+  if (sibling) return [dialect, sibling];
+  if (dialect) return [dialect];
+  return [null];
 }
 
 /** Admin badge for an approved global recording row. */

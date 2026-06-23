@@ -17,7 +17,9 @@
   .admin-section { margin-bottom: 24px; }
   .admin-badge { font-size: 0.75rem; padding: 2px 8px; border-radius: 999px; background: #f0f4f4; color: #555; }
   .admin-badge.fallback { background: #fff3cd; color: #856404; }
+  .admin-badge.legacy { background: #fff3cd; color: #856404; }
   .admin-badge.native { background: #d4edda; color: #155724; }
+  .admin-badge.shared { background: #d1ecf1; color: #0c5460; }
   .admin-filter { margin-bottom: 12px; }
   .admin-denied { padding: 24px; text-align: center; }
 </style>
@@ -61,7 +63,7 @@
       <nav class="admin-tabs" aria-label="Admin sections">
         <button type="button" class="admin-tab active" data-tab="pending-global">Pending recordings</button>
         <button type="button" class="admin-tab" data-tab="pending-community">Pending words</button>
-        <button type="button" class="admin-tab" data-tab="sd-recordings">Sudanese audio</button>
+        <button type="button" class="admin-tab" data-tab="sd-recordings">Sudanese / Juba audio</button>
       </nav>
 
       <section class="admin-section" id="tab-pending-global">
@@ -77,8 +79,8 @@
       </section>
 
       <section class="admin-section" id="tab-sd-recordings" hidden>
-        <h2>Arabic Sudanese recordings</h2>
-        <p class="muted">Native Sudanese clips override Juba fallback for each word.</p>
+        <h2>Arabic Sudanese &amp; Juba recordings</h2>
+        <p class="muted">Dialect-specific clips apply only when that dialect is selected. Until approved, sd and juba share the same pool.</p>
         <label class="field admin-filter">
           <span>Dialect filter</span>
           <select id="overviewDialect">

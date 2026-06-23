@@ -9,7 +9,7 @@ import {
   fetchPendingGlobalRecordings, approveGlobalRecording, rejectGlobalRecording,
   fetchGlobalRecordingsOverview
 } from "./global.js";
-import { fallbackLabel } from "./dialect-fallback.js";
+import { recordingBadge } from "./dialect-fallback.js";
 import { WORDS } from "./data.js";
 
 const el = {
@@ -75,7 +75,7 @@ async function renderPendingGlobal() {
     for (const item of items) {
       const row = renderRow({
         title: wordLabel(item.wordId),
-        meta: `${item.locale} / ${item.dialect || "default"} · ${item.lang}`,
+        meta: `${item.locale} / ${item.dialect || "default"} · ${item.lang}${item.dialect === "sd" || item.dialect === "juba" ? " · dialect override" : ""}`,
         audioUrl: item.audioUrl,
         actions: `
           <button type="button" class="btn-primary" data-action="approve-global" data-id="${item.id}">Approve</button>
@@ -122,12 +122,12 @@ async function renderPendingCommunity() {
 
 async function renderSdOverview() {
   if (!el.sdOverview) return;
-  const dialect = el.overviewDialect?.value ?? "sd";
+  const viewingDialect = el.overviewDialect?.value ?? "sd";
   el.sdOverview.innerHTML = `<p class="muted">Loading…</p>`;
   try {
     const { items, isAdmin } = await fetchGlobalRecordingsOverview({
       locale: "ar",
-      dialect: dialect || null
+      dialect: viewingDialect || null
     });
     if (!isAdmin) {
       el.sdOverview.innerHTML = `<p class="muted">Admin access required.</p>`;
@@ -138,15 +138,22 @@ async function renderSdOverview() {
       return;
     }
     el.sdOverview.innerHTML = "";
-    for (const item of items) {
-      const badge = item.fallbackFrom
-        ? `<span class="admin-badge fallback">${fallbackLabel(item.fallbackFrom)}</span>`
-        : `<span class="admin-badge native">Native ${item.dialect || "—"}</span>`;
+    const sorted = [...items].sort((a, b) => {
+      const labelA = wordLabel(a.wordId);
+      const labelB = wordLabel(b.wordId);
+      return labelA.localeCompare(labelB) || (a.dialect || "").localeCompare(b.dialect || "");
+    });
+    for (const item of sorted) {
+      const badge = recordingBadge(viewingDialect || item.dialect, {
+        dialect: item.dialect,
+        fallbackFrom: item.fallbackFrom
+      });
       const row = document.createElement("div");
       row.className = "pending-row";
       row.innerHTML = `
         <div>
-          <strong>${wordLabel(item.wordId)}</strong> ${badge}
+          <strong>${wordLabel(item.wordId)}</strong>
+          <span class="admin-badge ${badge.class}">${badge.label}</span>
           <br><small class="muted">${item.wordId} · ${item.lang}</small>
           ${item.audioUrl ? `<br><audio controls preload="none" src="${item.audioUrl}" style="max-width:100%;margin-top:6px"></audio>` : ""}
         </div>

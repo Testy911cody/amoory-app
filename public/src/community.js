@@ -4,7 +4,7 @@
 import { getSupabase, SUPABASE_READY, AUDIO_BUCKET, getCurrentUser, isOnline } from "./supabase.js";
 import { openTalkBoardDB } from "./idb.js";
 import { moderateForCommunity, logModerationRejection } from "./moderation.js";
-import { fallbackDialectFor } from "./dialect-fallback.js";
+import { siblingDialectFor } from "./dialect-fallback.js";
 
 const QUEUE_KEY = "talkboard_community_queue";
 const REMOTE_CACHE_KEY = "talkboard_community_remote";
@@ -109,15 +109,15 @@ function approvedFromAllSources(localeCode, dialectId) {
 
 export function getApprovedWords(localeCode, dialectId) {
   const primary = approvedFromAllSources(localeCode, dialectId);
-  const fb = fallbackDialectFor(localeCode, dialectId);
-  if (!fb) return primary;
-  const fallback = approvedFromAllSources(localeCode, fb);
+  const sibling = siblingDialectFor(localeCode, dialectId);
+  if (!sibling) return primary;
+  const fallback = approvedFromAllSources(localeCode, sibling);
   const seen = new Set(primary.map(w => w.text?.toLowerCase()));
   const merged = [...primary];
   for (const w of fallback) {
     const norm = w.text?.toLowerCase();
     if (norm && !seen.has(norm)) {
-      merged.push({ ...w, dialectFallback: fb });
+      merged.push({ ...w, dialectFallback: sibling });
       seen.add(norm);
     }
   }

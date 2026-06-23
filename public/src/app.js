@@ -22,7 +22,7 @@ import {
   initPersonal, mergePersonalWords, getPersonalRecording, savePersonalRecording,
   deletePersonalRecording, loadRecordedKeys, getRecordedKeys, recKey,
   addCustomWord, getAllCustomWords, deleteCustomWord,
-  listPersonalRecordings, aliasSdRecordingsForJuba, aliasJubaRecordingsForSd, syncPersonalQueue
+  listPersonalRecordings, syncPersonalQueue
 } from "./personal.js";
 import {
   loadGlobalRecordings, getGlobalRecording, submitGlobalRecording,
@@ -39,6 +39,7 @@ import {
 } from "./usage.js";
 import { moderateWordEntry, logModerationRejection } from "./moderation.js";
 import { initNativeShell } from "./native.js";
+import { siblingDialectFor } from "./dialect-fallback.js";
 
 /* ---------------- Toast ---------------- */
 function toast(msg) {
@@ -354,21 +355,38 @@ async function startRecording(word, cardEl) {
   mediaRec.start();
 }
 
-/* ---------------- Audio playback priority ----------------
-   1. Personal recording (local / cloud cache) for exact lang
-   2. Approved global baseline recording
-   3. Approved community audio (lang-matched)
+/* ---------------- Audio playback priority (active dialect D) ----------------
+   1. Personal recording for D
+   2. Approved global / community recording for D
+   3. Shared sd↔juba pool (sibling dialect)
    4. Web Speech API TTS of translated native text */
 async function speakWord(word) {
-  const personal = await getPersonalRecording(word.id, settings.locale, state.dialect);
-  if (personal) { await playBlob(personal); return; }
+  const locale = settings.locale;
+  const dialect = state.dialect;
+  const sibling = siblingDialectFor(locale, dialect);
 
-  const global = await getGlobalRecording(word.id, settings.locale, state.dialect);
-  if (global) { await playBlob(global); return; }
+  const personalD = await getPersonalRecording(word.id, locale, dialect, { directOnly: true });
+  if (personalD) { await playBlob(personalD); return; }
 
-  if (word.source === "community" && word.communityId) {
-    const comm = await getCommunityAudio(word.communityId);
-    if (comm) { await playBlob(comm); return; }
+  const globalD = await getGlobalRecording(word.id, locale, dialect, { directOnly: true });
+  if (globalD) { await playBlob(globalD); return; }
+
+  if (word.source === "community" && word.communityId && !word.dialectFallback) {
+    const commD = await getCommunityAudio(word.communityId);
+    if (commD) { await playBlob(commD); return; }
+  }
+
+  if (sibling) {
+    const personalS = await getPersonalRecording(word.id, locale, sibling, { directOnly: true });
+    if (personalS) { await playBlob(personalS); return; }
+
+    const globalS = await getGlobalRecording(word.id, locale, sibling, { directOnly: true });
+    if (globalS) { await playBlob(globalS); return; }
+
+    if (word.source === "community" && word.communityId && word.dialectFallback) {
+      const commS = await getCommunityAudio(word.communityId);
+      if (commS) { await playBlob(commS); return; }
+    }
   }
 
   const text = labelForWord(word, settings.locale, state.dialect);
@@ -579,11 +597,6 @@ async function syncWhenOnline() {
   } catch (err) {
     console.warn("[Talk Board] syncWhenOnline:", err);
   }
-}
-
-async function aliasDialectRecordings() {
-  await aliasJubaRecordingsForSd();
-  await aliasSdRecordingsForJuba();
 }
 
 function renderAdminLink(isAdmin) {
@@ -1148,7 +1161,6 @@ el.dialectSelect?.addEventListener("change", async e => {
   settings = saveSettings({ dialect: state.dialect, voiceURI: null });
   renderVoiceSelect();
   await loadGlobalRecordings(settings.locale, state.dialect);
-  await aliasDialectRecordings();
   renderBoard();
   renderLangIndicator();
 });
@@ -1886,10 +1898,8 @@ async function preloadAuthAndData() {
     renderAccountBadge(authUser);
     const tasks = [initCommunity(), loadRecordedKeys()];
     if (authUser && isOnline()) tasks.push(initPersonal(authUser));
-    else if (authUser) await aliasDialectRecordings();
     await Promise.allSettled(tasks);
     if (authUser) {
-      await aliasDialectRecordings();
       checkIsAdmin().then(renderAdminLink).catch(() => renderAdminLink(false));
     } else {
       renderAdminLink(false);

@@ -74,7 +74,7 @@ async function fetchBlobToCache(key, audioUrl) {
 
 function mergeRemoteApproved(locale, dialects, newRows) {
   const keep = readRemoteApproved().filter(r =>
-    r.locale !== locale || !dialects.includes(r.dialect)
+    r.locale !== locale || !dialects.includes(r.dialect ?? null)
   );
   writeRemoteApproved([...keep, ...newRows]);
 }
@@ -84,8 +84,7 @@ async function loadFromCacheOnly(locale, dialect) {
   await loadRecordedKeys();
   const dialects = dialectsToLoad(locale, dialect);
   const rows = readRemoteApproved().filter(r =>
-    r.locale === locale &&
-    (dialects.length ? dialects.includes(r.dialect) : !r.dialect)
+    r.locale === locale && dialects.includes(r.dialect ?? null)
   );
   return { loaded: rows.length, fromCache: true };
 }
@@ -104,9 +103,13 @@ export async function loadGlobalRecordings(locale, dialect) {
     .select("id,word_key,locale,dialect,lang,audio_url,status,fallback_from_dialect")
     .eq("status", "approved")
     .eq("locale", locale);
-  if (dialects.length === 1) query = query.eq("dialect", dialects[0]);
-  else if (dialects.length > 1) query = query.in("dialect", dialects);
-  else query = query.is("dialect", null);
+  if (dialects.length === 1 && dialects[0] === null) {
+    query = query.is("dialect", null);
+  } else if (dialects.length === 1) {
+    query = query.eq("dialect", dialects[0]);
+  } else if (dialects.length > 1) {
+    query = query.in("dialect", dialects);
+  }
 
   const { data, error } = await query;
   if (error) {
@@ -115,7 +118,7 @@ export async function loadGlobalRecordings(locale, dialect) {
   }
 
   const rows = data || [];
-  mergeRemoteApproved(locale, dialects.length ? dialects : [null], rows);
+  mergeRemoteApproved(locale, dialects, rows);
 
   let loaded = 0;
   for (const row of rows) {

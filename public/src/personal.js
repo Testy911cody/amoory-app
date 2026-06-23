@@ -6,7 +6,7 @@ import {
 } from "./supabase.js";
 import { ttsLangFor } from "./locales.js";
 import { openTalkBoardDB } from "./idb.js";
-import { fallbackDialectFor } from "./dialect-fallback.js";
+import { siblingDialectFor } from "./dialect-fallback.js";
 
 const CUSTOM_KEY = "talkboard_custom_words";
 const META_KEY = "talkboard_personal_meta";
@@ -238,8 +238,7 @@ export async function syncFromCloud(user) {
     writeMeta(meta);
   }
 
-  await aliasJubaRecordingsForSd();
-  await aliasSdRecordingsForJuba();
+  await loadRecordedKeys();
 
   let words = 0;
   const { data: cloudWords, error: wordErr } = await supabase
@@ -306,51 +305,14 @@ export function mergePersonalWords(builtinWords, categoryId, locale, dialect) {
   return [...builtinWords, ...custom];
 }
 
-export async function getPersonalRecording(wordId, locale, dialect) {
+export async function getPersonalRecording(wordId, locale, dialect, { directOnly = false } = {}) {
   const key = recKey(wordId, locale, dialect);
   const blob = await getBlobLocal(key);
   if (blob) return blob;
-  const fb = fallbackDialectFor(locale, dialect);
-  if (fb) {
-    const fbBlob = await getBlobLocal(recKey(wordId, locale, fb));
-    if (fbBlob) return fbBlob;
-  }
-  if (locale === "ar" && dialect === "juba") {
-    return getBlobLocal(`${wordId}__ar-SD`);
-  }
-  return null;
-}
-
-/** Copy Juba blobs to Sudanese cache keys when sd has no recording yet. */
-export async function aliasJubaRecordingsForSd() {
-  await loadRecordedKeys();
-  const jubaLang = recordingLangCode("ar", "juba");
-  const jubaSuffix = `__${jubaLang}`;
-  for (const key of [...recordedKeys]) {
-    if (!key.endsWith(jubaSuffix)) continue;
-    const wordId = key.slice(0, -jubaSuffix.length);
-    const sdKey = recKey(wordId, "ar", "sd");
-    if (recordedKeys.has(sdKey)) continue;
-    const blob = await getBlobLocal(key);
-    if (!blob) continue;
-    await saveBlobLocal(sdKey, blob);
-    recordedKeys.add(sdKey);
-  }
-}
-
-/** Copy Sudanese (ar-SD) blobs to Juba (ar) cache keys when Juba has no recording yet. */
-export async function aliasSdRecordingsForJuba() {
-  await loadRecordedKeys();
-  for (const key of [...recordedKeys]) {
-    if (!key.endsWith("__ar-SD")) continue;
-    const wordId = key.slice(0, -"__ar-SD".length);
-    const jubaKey = recKey(wordId, "ar", "juba");
-    if (recordedKeys.has(jubaKey)) continue;
-    const blob = await getBlobLocal(key);
-    if (!blob) continue;
-    await saveBlobLocal(jubaKey, blob);
-    recordedKeys.add(jubaKey);
-  }
+  if (directOnly) return null;
+  const sibling = siblingDialectFor(locale, dialect);
+  if (!sibling) return null;
+  return getBlobLocal(recKey(wordId, locale, sibling));
 }
 
 export async function savePersonalRecording(wordId, locale, dialect, blob, user, { shareWithCommunity = false } = {}) {
