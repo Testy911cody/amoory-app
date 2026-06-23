@@ -50,6 +50,16 @@ create policy "Admins review global recordings"
     )
   );
 
+create policy "Admins insert global recordings"
+  on public.global_word_recordings for insert
+  to authenticated
+  with check (
+    exists (
+      select 1 from public.profiles p
+      where p.id = auth.uid() and p.is_admin = true
+    )
+  );
+
 create policy "Admins read pending global recordings"
   on public.global_word_recordings for select
   to authenticated

@@ -12,6 +12,7 @@
     "assets:android": "npx @capacitor/assets generate --android",
     "assets:ios": "npx @capacitor/assets generate --ios",
     "env:from-housegames": "node scripts/copy-env-from-housegames.js",
+    "seed:global": "node scripts/seed-global-recordings.js",
     "cap:add:ios": "npx cap add ios",
     "cap:add:android": "npx cap add android",
     "cap:sync": "npx cap sync",
