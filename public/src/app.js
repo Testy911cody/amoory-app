@@ -76,6 +76,55 @@ let pendingCommunityShareAfterAuth = null;
 let mediaRec = null, recChunks = [], recStream = null, recTimer = null, recStart = 0;
 let recordingWord = null, recordingCard = null;
 
+/** Hold duration before card body starts re-record (ms). Short tap still speaks. */
+const WORD_LONG_PRESS_MS = 650;
+
+const WORD_PRESS_IGNORE = ".mic,.drag-handle,.pin-home";
+
+function wordPressIgnored(target) {
+  return target?.closest?.(WORD_PRESS_IGNORE);
+}
+
+/** Long-press on card body → re-record; tap → onTap (speak). Ignores mic / drag / pin. */
+function attachWordCardLongPress(card, word, onTap) {
+  let pressTimer = null;
+  let longPressFired = false;
+
+  card.addEventListener("pointerdown", (e) => {
+    if (wordPressIgnored(e.target)) return;
+    if (e.button > 0) return;
+    longPressFired = false;
+    pressTimer = setTimeout(() => {
+      pressTimer = null;
+      longPressFired = true;
+      card.classList.add("long-press-active");
+      navigator.vibrate?.(35);
+      toast(t("reRecording"));
+      startRecording(word, card);
+    }, WORD_LONG_PRESS_MS);
+  });
+
+  const cancelPress = () => {
+    if (pressTimer) {
+      clearTimeout(pressTimer);
+      pressTimer = null;
+    }
+    card.classList.remove("long-press-active");
+  };
+  card.addEventListener("pointerup", cancelPress);
+  card.addEventListener("pointerleave", cancelPress);
+  card.addEventListener("pointercancel", cancelPress);
+
+  card.addEventListener("click", async (e) => {
+    if (wordPressIgnored(e.target)) return;
+    if (longPressFired) {
+      longPressFired = false;
+      return;
+    }
+    await onTap();
+  });
+}
+
 function showRecordingUI(word) {
   const overlay = document.getElementById("recordingOverlay");
   const label = document.getElementById("recordingLabel");
@@ -403,6 +452,7 @@ function updateSettingsPanelLabels() {
     pendingWordsHint: "pendingWordsHint",
     pendingLocalTitle: "pendingLocalTitle",
     pendingOnlineTitle: "pendingOnlineTitle",
+    pendingGlobalTitle: "pendingGlobalTitle",
     caregiverModeLbl: "caregiverMode",
     exitCaregiverBtn: "exitCaregiver"
   };
@@ -748,7 +798,9 @@ function renderBoard() {
     if (w.source === "community") card.classList.add("community");
     if (w.source === "personal") card.classList.add("personal");
     if (w.isCore) card.classList.add("core");
+    const pinned = isWordPinned(w.id);
     if (pinned && w.tier !== 0) card.classList.add("home-pinned");
+    card.title = t("holdToReRecord");
 
     const badges = [];
     if (recordedKeys.has(key)) badges.push(`<span class="reciic">🎙️</span>`);
@@ -759,7 +811,6 @@ function renderBoard() {
     const dragHtml = isCaregiver()
       ? `<span class="drag-handle" draggable="true" title="Drag to reorder" aria-hidden="true">⠿</span>`
       : "";
-    const pinned = isWordPinned(w.id);
     const showPinBtn = isCaregiver() && state.kidView === "more";
     const showUnpinBtn = isCaregiver() && state.kidView === "home" && pinned && w.tier !== 0;
     const pinHtml = showPinBtn
@@ -774,8 +825,7 @@ function renderBoard() {
     card.innerHTML = dragHtml + micHtml + pinHtml
       + `<span class="emoji">${w.emoji}</span>${labelHtml}${badges.join("")}`;
 
-    card.onclick = async (e) => {
-      if (e.target.closest(".mic") || e.target.closest(".drag-handle") || e.target.closest(".pin-home")) return;
+    attachWordCardLongPress(card, w, async () => {
       recordWordUse(w.id);
       await speakWord(w);
       state.sentence.push(w);
@@ -784,11 +834,11 @@ function renderBoard() {
         card.classList.remove("word--xl", "word--lg", "word--md", "word--sm");
         card.classList.add(cardSizeClass(w));
       }
-    };
+    });
     card.addEventListener("keydown", (e) => {
       if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
-        if (!e.target.closest(".mic")) card.click();
+        if (!wordPressIgnored(e.target)) card.click();
       }
     });
     const mic = card.querySelector(".mic");
@@ -819,18 +869,6 @@ function renderBoard() {
         renderBoard();
         if (state.kidView === "more" || state.kidView === "home") updateBoardSection();
       });
-    }
-
-    if (isCaregiver()) {
-      let pressTimer = null;
-      card.addEventListener("pointerdown", (e) => {
-        if (e.target.closest(".mic") || e.target.closest(".drag-handle") || e.target.closest(".pin-home")) return;
-        pressTimer = setTimeout(() => startRecording(w, card), 800);
-      });
-      const cancelPress = () => { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; } };
-      card.addEventListener("pointerup", cancelPress);
-      card.addEventListener("pointerleave", cancelPress);
-      card.addEventListener("pointercancel", cancelPress);
     }
 
     el.board.appendChild(card);
@@ -917,22 +955,50 @@ async function renderPendingQueue() {
   }
 
   let onlineCount = 0;
+  let globalCount = 0;
   const onlineSection = document.getElementById("pendingOnlineSection");
   const onlineHint = document.getElementById("pendingOnlineHint");
+  const globalList = document.getElementById("pendingGlobalList");
+  const globalHint = document.getElementById("pendingGlobalHint");
   if (SUPABASE_READY && authUser && el.pendingOnlineList) {
     try {
-      const { items, isAdmin } = await fetchOnlinePending();
+      const [{ items, isAdmin }, globalPending] = await Promise.all([
+        fetchOnlinePending(),
+        fetchPendingGlobalRecordings()
+      ]);
       onlineCount = items.length;
-      if (items.length) {
+      globalCount = globalPending.items.length;
+      const showOnline = items.length > 0 || globalPending.items.length > 0;
+      if (showOnline) {
         onlineSection.hidden = false;
         onlineHint.textContent = isAdmin ? t("pendingOnlineHint") : t("pendingOnlineOwnHint");
         el.pendingOnlineList.innerHTML = "";
-        items.forEach(item => {
-          el.pendingOnlineList.appendChild(renderPendingRow(item, { online: true, canModerate: isAdmin }));
-        });
+        if (items.length) {
+          items.forEach(item => {
+            el.pendingOnlineList.appendChild(renderPendingRow(item, { online: true, canModerate: isAdmin }));
+          });
+        } else {
+          el.pendingOnlineList.innerHTML = `<p class="muted">${t("noPendingWords")}</p>`;
+        }
+        if (globalList) {
+          globalHint.textContent = isAdmin ? t("pendingGlobalHint") : t("pendingGlobalOwnHint");
+          globalList.innerHTML = "";
+          if (globalPending.items.length) {
+            globalPending.items.forEach(item => {
+              globalList.appendChild(renderPendingRow(item, {
+                online: true,
+                canModerate: globalPending.isAdmin,
+                globalRec: true
+              }));
+            });
+          } else {
+            globalList.innerHTML = `<p class="muted">${t("noPendingWords")}</p>`;
+          }
+        }
       } else {
         onlineSection.hidden = true;
         el.pendingOnlineList.innerHTML = "";
+        if (globalList) globalList.innerHTML = "";
       }
     } catch {
       onlineSection.hidden = true;
@@ -941,12 +1007,16 @@ async function renderPendingQueue() {
     onlineSection.hidden = true;
   }
 
-  updatePendingBadge(pending.length + onlineCount);
+  updatePendingBadge(pending.length + onlineCount + globalCount);
 
   const bindActions = (root) => {
     root.querySelectorAll(".btn-approve").forEach(btn => {
       btn.onclick = async () => {
-        if (btn.dataset.online) {
+        if (btn.dataset.global) {
+          const res = await approveGlobalRecording(btn.dataset.id);
+          if (!res.ok) { toast(res.reason || t("uploadFailed")); return; }
+          renderBoard();
+        } else if (btn.dataset.online) {
           const res = await approveOnlineSubmission(btn.dataset.id);
           if (!res.ok) { toast(res.reason || t("uploadFailed")); return; }
         } else {
@@ -959,7 +1029,9 @@ async function renderPendingQueue() {
     });
     root.querySelectorAll(".btn-reject").forEach(btn => {
       btn.onclick = async () => {
-        if (btn.dataset.online) {
+        if (btn.dataset.global) {
+          await rejectGlobalRecording(btn.dataset.id);
+        } else if (btn.dataset.online) {
           await rejectOnlineSubmission(btn.dataset.id);
         } else {
           rejectSubmission(btn.dataset.id);
@@ -971,6 +1043,7 @@ async function renderPendingQueue() {
   };
   bindActions(el.pendingList);
   if (el.pendingOnlineList) bindActions(el.pendingOnlineList);
+  if (globalList) bindActions(globalList);
 }
 
 function refreshAll() {
@@ -1051,10 +1124,12 @@ el.localeSelect?.addEventListener("change", e => {
   refreshAll();
 });
 
-el.dialectSelect?.addEventListener("change", e => {
+el.dialectSelect?.addEventListener("change", async e => {
   state.dialect = e.target.value;
   settings = saveSettings({ dialect: state.dialect, voiceURI: null });
   renderVoiceSelect();
+  await loadGlobalRecordings(settings.locale, state.dialect);
+  await aliasSdRecordingsForJuba();
   renderBoard();
   renderLangIndicator();
 });
@@ -1892,6 +1967,7 @@ function ensureBoardRendered() {
 
 async function preloadAuthAndData() {
   try {
+    await loadGlobalRecordings(settings.locale, state.dialect);
     authUser = await getCurrentUser();
     if (!authUser && SUPABASE_READY) {
       const doggy = await Promise.race([
@@ -1901,7 +1977,10 @@ async function preloadAuthAndData() {
       authUser = doggy || authUser;
     }
     renderAccountBadge(authUser);
-    await Promise.allSettled([initCommunity(), initPersonal(authUser)]);
+    const tasks = [initCommunity(), loadRecordedKeys()];
+    if (authUser) tasks.push(initPersonal(authUser));
+    await Promise.allSettled(tasks);
+    if (authUser) await aliasSdRecordingsForJuba();
     refreshAll();
     onAuthChange(user => {
       authUser = user || null;

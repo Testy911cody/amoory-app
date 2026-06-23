@@ -118,6 +118,7 @@ body[dir="rtl"] .caregiver-mode .word .drag-handle{left:auto;right:6px;}
 .settings-tab-panel{display:block;}
 .subsection{font-size:14px;margin:16px 0 8px;color:var(--ink);}
 .word:active{transform:scale(.94);}
+.word.long-press-active{transform:scale(.9);border-color:#D9695A!important;transition:transform .12s ease;}
 .word .emoji{font-size:46px;line-height:1;}
 .word .lbl{font-size:16px;font-weight:800;text-align:center;line-height:1.15;}
 .word .lbl.sub{font-size:13px;font-weight:600;color:var(--soft);}
