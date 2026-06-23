@@ -143,34 +143,36 @@ export function homeWordIdSet(all, pinnedIds) {
 /** Words for the active kid view. */
 export function wordsForKidView(viewId, mergeFn, locale, dialect) {
   const unlocked = getUnlockedTier();
-  const all = allWordsFlat(mergeFn, locale, dialect).filter(w => isWordVisible(w, unlocked));
+  const allFlat = allWordsFlat(mergeFn, locale, dialect);
+  const visible = allFlat.filter(w => isWordVisible(w, unlocked));
   const pinnedIds = getPinnedWords();
   const orderKey = boardViewKey(locale, { kidView: viewId });
   const finish = list => applySavedOrder(list, orderKey);
 
   if (viewId === "home") {
-    return finish(computeHomeWords(all, pinnedIds));
+    return finish(computeHomeWords(visible, pinnedIds));
   }
 
   if (viewId === "need") {
     const cats = new Set(VIEW_CATEGORIES.need);
-    return finish(sortWords(all.filter(w =>
+    return finish(sortWords(visible.filter(w =>
       cats.has(w.categoryId) && w.tier <= 1
     )));
   }
 
   if (viewId === "feel") {
-    return finish(sortWords(all.filter(w =>
+    return finish(sortWords(visible.filter(w =>
       w.categoryId === "feelings" && w.tier <= 1
     )));
   }
 
+  /** More words: full vocabulary minus home — no tier gate (caregiver browse layer). */
   if (viewId === "more") {
-    const homeIds = homeWordIdSet(all, pinnedIds);
-    return finish(sortWords(all.filter(w => !homeIds.has(w.id))));
+    const homeIds = homeWordIdSet(visible, pinnedIds);
+    return finish(sortWords(allFlat.filter(w => !homeIds.has(w.id))));
   }
 
-  return finish(sortWords(all.filter(w => w.tier === 0)));
+  return finish(sortWords(visible.filter(w => w.tier === 0)));
 }
 
 export function labelForKidView(view, locale) {
