@@ -1,6 +1,6 @@
 /* Talk Board service worker — makes the app work offline.
    Bump CACHE_VERSION whenever app files change so users get the update. */
-const CACHE_VERSION = "talkboard-v12";
+const CACHE_VERSION = "talkboard-v13";
 const SHELL_URL = "./index.html";
 const CORE_ASSETS = [
   SHELL_URL,
@@ -135,6 +135,21 @@ self.addEventListener("fetch", (event) => {
           return res;
         })
         .catch(() => caches.match(SHELL_URL).then((r) => r || offlineResponse()))
+    );
+    return;
+  }
+
+  if (isSameOrigin && isAppScript(url)) {
+    event.respondWith(
+      networkFetch(req)
+        .then((res) => {
+          if (isCacheable(res)) {
+            const copy = res.clone();
+            caches.open(CACHE_VERSION).then((c) => safeCachePut(c, req, copy));
+          }
+          return res;
+        })
+        .catch(() => caches.match(req).then((r) => r || offlineResponse()))
     );
     return;
   }

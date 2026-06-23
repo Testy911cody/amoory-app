@@ -1756,21 +1756,56 @@ function bootUI() {
   refreshAll();
 }
 
+function safeBootUI() {
+  try {
+    bootUI();
+  } catch (err) {
+    console.error("[Talk Board] bootUI failed:", err);
+    try {
+      renderLocaleSelect();
+      renderDialectSelect();
+      renderCats();
+      renderBoard();
+    } catch (fallbackErr) {
+      console.error("[Talk Board] fallback render failed:", fallbackErr);
+    }
+  }
+}
+
+function ensureBoardRendered() {
+  requestAnimationFrame(() => {
+    const hasCards = el.board?.querySelector(".word");
+    const hasEmptyMsg = el.board?.querySelector(".empty-more");
+    if (!hasCards && !hasEmptyMsg) {
+      console.warn("[Talk Board] board empty after boot — re-rendering bundled words");
+      refreshAll();
+    }
+  });
+}
+
+async function preloadAuthAndData() {
+  try {
+    authUser = await getCurrentUser();
+    if (!authUser && SUPABASE_READY) {
+      const doggy = await Promise.race([
+        ensureDoggyPreload(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("doggy preload timeout")), 12000))
+      ]).catch(() => null);
+      authUser = doggy || authUser;
+    }
+    await Promise.allSettled([initCommunity(), initPersonal(authUser)]);
+    refreshAll();
+  } catch (err) {
+    console.warn("[Talk Board] preloadAuthAndData:", err);
+  }
+}
+
 (async function init() {
   initTTS();
   initNativeShell().catch(() => {});
-  bootUI();
-  // Cloud auth + sync run after first paint — never block bundled board render.
-  Promise.resolve()
-    .then(async () => {
-      authUser = await getCurrentUser();
-      if (!authUser && SUPABASE_READY) {
-        authUser = await ensureDoggyPreload();
-      }
-      await Promise.allSettled([initCommunity(), initPersonal(authUser)]);
-      refreshAll();
-    })
-    .catch(() => {});
+  safeBootUI();
+  ensureBoardRendered();
+  preloadAuthAndData();
 })();
 
 let unlocked = false;
