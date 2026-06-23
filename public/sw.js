@@ -1,6 +1,6 @@
 /* Talk Board service worker — makes the app work offline.
    Bump CACHE_VERSION whenever app files change so users get the update. */
-const CACHE_VERSION = "talkboard-v15";
+const CACHE_VERSION = "talkboard-v16";
 const SHELL_URL = "./index.html";
 const CORE_ASSETS = [
   SHELL_URL,

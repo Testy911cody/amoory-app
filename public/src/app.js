@@ -15,7 +15,7 @@ import {
 } from "./community.js";
 import {
   SUPABASE_READY, getCurrentUser, signInWithEmail, signInWithPassword,
-  signUpWithPassword, signOut, onAuthChange, displayUsername,
+  signUpWithPassword, signOut, onAuthChange, displayUsername, usesTalkboardAccount,
   validateUsername, validatePin, ensureDoggyPreload
 } from "./supabase.js";
 import {
@@ -485,9 +485,10 @@ function renderAccountBadge(user = authUser) {
   if (user) {
     const name = displayUsername(user);
     badge.textContent = name;
-    badge.title = `${t("signedInAs")} ${name}`;
+    badge.title = `${t("signedInAs")} ${name} — ${t("accountBadgeHint")}`;
     badge.setAttribute("aria-label", badge.title);
     badge.classList.remove("is-guest");
+    badge.classList.add("is-clickable");
     badge.hidden = false;
     return;
   }
@@ -495,7 +496,31 @@ function renderAccountBadge(user = authUser) {
   badge.title = t("guestAccount");
   badge.setAttribute("aria-label", t("guestAccount"));
   badge.classList.add("is-guest");
+  badge.classList.remove("is-clickable");
   badge.hidden = false;
+}
+
+function openAccountSettings() {
+  const go = () => {
+    if (!isCaregiver()) {
+      settings = saveSettings({ caregiverActive: true });
+      applyChrome();
+      refreshAll();
+    }
+    switchSettingsTab("general");
+    openPanel(el.settingsPanel);
+    document.getElementById("caregiverAuth")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  };
+  if (isCaregiver()) { go(); return; }
+  if (settings.caregiverPin) { openPinPanel(go); return; }
+  go();
+}
+
+function setupAccountBadge() {
+  document.getElementById("accountBadge")?.addEventListener("click", () => {
+    if (!authUser) return;
+    openAccountSettings();
+  });
 }
 
 function wordLabelHtml(w) {
@@ -1721,10 +1746,16 @@ function setupContributorAuth() {
   const signInBtn = document.getElementById("signInBtn");
 
   function reflect(user) {
+    if (user && usesTalkboardAccount(user)) {
+      authBox.hidden = true;
+      return;
+    }
+    authBox.hidden = false;
     if (user) {
-      statusEl.textContent = `${t("contributor")}: ${user.email || "signed in"}`;
+      statusEl.textContent = `${t("contributor")}: ${displayUsername(user)}`;
       signInRow.hidden = true;
       signOutBtn.hidden = false;
+      if (emailInput) emailInput.value = "";
     } else {
       statusEl.textContent = t("signIn") + " — " + t("shareOnline");
       signInRow.hidden = false;
@@ -1773,6 +1804,7 @@ function bootUI() {
   populateContribCategories();
   populateSecondaryLocales();
   setupContributorAuth();
+  setupAccountBadge();
   setupContribForm("contrib", { onSuccess: () => closePanel(el.contributePanel) });
   setupContribForm("boardContrib");
   setupCaregiverAuth();

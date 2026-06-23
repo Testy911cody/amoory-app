@@ -50,7 +50,7 @@ async function testEnv({ name, url }) {
       } catch { return ""; }
     });
     const swMatch = swText.match(/CACHE_VERSION = "([^"]+)"/);
-    record(name, "Service worker v15", swMatch?.[1] === "talkboard-v15", swMatch?.[1] || "missing");
+    record(name, "Service worker v16", swMatch?.[1] === "talkboard-v16", swMatch?.[1] || "missing");
 
     // Supabase config
     const supabaseReady = await page.evaluate(async () => {
@@ -78,6 +78,12 @@ async function testEnv({ name, url }) {
     // Kid view tabs
     const catCount = await page.locator("#cats .cat").count();
     record(name, "Category/kid tabs", catCount >= 3, `${catCount} tabs`);
+
+    // Language / dialect dropdowns
+    const localeOpts = await page.locator("#localeSelect option").count();
+    record(name, "Language dropdown populated", localeOpts >= 5, `${localeOpts} languages`);
+    const dialectOpts = await page.locator("#dialectSelect option").count();
+    record(name, "Dialect dropdown populated", dialectOpts >= 1, `${dialectOpts} dialects`);
 
     // More words tab
     const moreTab = page.locator("#cats .cat", { hasText: /More words|كلمات أكثر/i });
@@ -118,28 +124,42 @@ async function testEnv({ name, url }) {
       record(name, "Suggest word panel expands", bodyOpen);
     }
 
-    // Pending words tab
+    // Pending words tab (reopen settings — closed for inline suggest test)
+    await page.click("#settingsBtn");
+    await page.waitForTimeout(500);
     const pendingTab = page.locator("#settingsTabPendingBtn");
     if (await pendingTab.isVisible()) {
       await pendingTab.click();
       await page.waitForTimeout(500);
       const pendingPanel = await page.locator("#settingsTabPending").isVisible();
       record(name, "Pending words tab", pendingPanel);
+    } else {
+      record(name, "Pending words tab", false, "tab button not visible");
     }
 
-    // Modal viewport CSS checks
+    // Modal viewport CSS checks (computed maxHeight resolves px from min(90dvh,720px))
     const panelStyles = await page.evaluate(() => {
       const panel = document.querySelector(".panel-inner");
       if (!panel) return null;
       const cs = getComputedStyle(panel);
-      return { maxHeight: cs.maxHeight, overflow: cs.overflow };
+      const ruleUsesDvh = [...document.styleSheets].some((sheet) => {
+        try {
+          return [...sheet.cssRules].some(
+            (r) => r.selectorText?.includes("panel-inner") && r.cssText?.includes("dvh")
+          );
+        } catch {
+          return false;
+        }
+      });
+      const maxH = parseFloat(cs.maxHeight) || 0;
+      return { maxHeight: cs.maxHeight, overflow: cs.overflow, ruleUsesDvh, maxH };
     });
-    record(
-      name,
-      "Modal viewport (max-height dvh)",
-      panelStyles?.maxHeight?.includes("vh") ?? false,
-      JSON.stringify(panelStyles)
-    );
+    const modalOk =
+      panelStyles?.ruleUsesDvh &&
+      panelStyles?.overflow === "hidden" &&
+      panelStyles?.maxH > 0 &&
+      panelStyles?.maxH <= 720;
+    record(name, "Modal viewport (max-height dvh)", modalOk, JSON.stringify(panelStyles));
 
     // Console errors (filter noise)
     const critical = consoleErrors.filter(
@@ -152,8 +172,10 @@ async function testEnv({ name, url }) {
     record(name, "No critical console errors", critical.length === 0, critical.slice(0, 3).join(" | ") || "clean");
 
     // PIN panel (set PIN then test gate)
-    await page.click("#settingsClose");
-    await page.waitForTimeout(300);
+    if (await page.locator("#settingsPanel").isVisible()) {
+      await page.click("#settingsClose");
+      await page.waitForTimeout(300);
+    }
     await page.evaluate(() => {
       localStorage.setItem(
         "talkboard_settings",

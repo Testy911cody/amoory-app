@@ -100,6 +100,13 @@ export function displayUsername(user) {
   return email;
 }
 
+/** True for username+PIN accounts (synthetic @talkboard.app email). */
+export function usesTalkboardAccount(user) {
+  if (!user) return false;
+  if (user.user_metadata?.username) return true;
+  return (user.email || "").endsWith(USERNAME_EMAIL_DOMAIN);
+}
+
 function friendlyAuthError(message) {
   const m = (message || "").toLowerCase();
   if (m.includes("invalid login credentials")) return "Wrong username or PIN.";
