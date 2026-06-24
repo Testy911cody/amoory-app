@@ -3,6 +3,7 @@
  * Prepare Talk Board (AmooryApp) for static hosting.
  * - Injects Supabase config from .env.local / environment
  * - Copies public/ → dist/ for optional standalone deploy
+ *   (includes static marketing pages: promo.html, privacy.html)
  */
 
 import fs from "node:fs";

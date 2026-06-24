@@ -1,6 +1,6 @@
 # Claude tmux directive — Talk Board (AmooryApp)
 
-**Updated:** 2026-06-22  
+**Updated:** 2026-06-24  
 **Active project:** AmooryApp (Talk Board PWA + Capacitor shell)  
 **Production URL:** https://housegames.club/amoory/
 
@@ -157,6 +157,10 @@ Deploy to production is **out of scope** for tmux Claude unless the user explici
 public/src/**
 public/index.html   # structure only when UI requires it
 public/sw.js        # PWA shell tweaks tied to UI work
+public/promo.html   # ad landing page (marketing)
+public/privacy.html # privacy policy (legal/marketing)
+docs/MARKETING_AD_KIT.md
+docs/STORE_LISTING.md
 ```
 
 **Out of scope**
@@ -177,7 +181,53 @@ npm run build
 
 ---
 
-## 6. Authorization
+## 6. Marketing & ads
+
+Use tmux for sustained marketing work (landing page polish, ad kit variants, screenshot copy loops) when edits span multiple files or take **>15 minutes**.
+
+### File locations
+
+| Asset | Path |
+|-------|------|
+| **Ad landing page** | `public/promo.html` |
+| **Privacy policy** | `public/privacy.html` |
+| **Ad copy kit (FB/Google/video)** | `docs/MARKETING_AD_KIT.md` |
+| **Store listing copy** | `docs/STORE_LISTING.md` |
+| **Brand icon source** | `assets/icon-source.png` |
+
+### Deploy path
+
+```
+edit public/promo.html  →  npm run build  →  (HouseGames) npm run sync:amoory  →  [deploy when user asks]
+```
+
+- **Live landing URL:** https://housegames.club/amoory/promo.html
+- **App entry:** https://housegames.club/amoory/
+- Sync copies `AmooryApp/public/` → `HouseGames/public/amoory/` (includes `promo.html`).
+
+### Brand voice & design
+
+- **Accent color:** `#2E8C8C` (teal) — match `public/src/styles.css` and `privacy.html`
+- **Audience:** Caregivers of nonspeaking children; Arabic / Sudanese / Juba dialect focus
+- **Tone:** Warm, practical, respectful. Emphasize free, offline, dialect voices, privacy (no ads/tracking)
+- **CTA:** "Try free" → `./index.html` (relative) or `/amoory/` in production
+- **Do not invent** fake testimonials, star ratings, or clinical outcome claims
+- Social proof section in `promo.html` is a **placeholder** until real family/therapist quotes exist
+
+### Marketing verify
+
+```powershell
+cd "C:\Users\sudan\Desktop\VSCODE - Copy\Projects\AmooryApp"
+npm run build
+# confirm dist/promo.html exists
+cd "C:\Users\sudan\Desktop\VSCODE - Copy\Projects\HouseGames"
+npm run sync:amoory
+# smoke: https://housegames.club/amoory/promo.html (after deploy)
+```
+
+---
+
+## 7. Authorization
 
 **User authorized (2026-06-22):**
 
@@ -193,7 +243,7 @@ npm run build
 
 ---
 
-## 7. Feedback loop
+## 8. Feedback loop
 
 When UI patterns, file layout, or workflow change:
 

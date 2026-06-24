@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#2E8C8C">
+<meta name="description" content="Talk Board — free picture-and-voice AAC for nonspeaking children. Tap pictures to speak in Arabic dialects, record your voice, works offline.">
+<title>Talk Board — Free AAC for Nonspeaking Children</title>
+<link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-32.png">
+<link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+
+<!-- Open Graph (ad / social traffic) -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Talk Board">
+<meta property="og:title" content="Talk Board — Picture communication for nonspeaking children">
+<meta property="og:description" content="Tap pictures to speak. Free AAC app with Arabic &amp; Juba dialect voices, personal recordings, and offline use — no account required.">
+<meta property="og:image" content="https://housegames.club/amoory/icons/icon-512.png">
+<meta property="og:url" content="https://housegames.club/amoory/promo.html">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Talk Board — Free AAC for kids">
+<meta name="twitter:description" content="Tap pictures to speak. Works offline. Arabic dialect voices. No ads, no tracking.">
+<meta name="twitter:image" content="https://housegames.club/amoory/icons/icon-512.png">
+
+<style>
+  :root {
+    --bg: #F2F6F8;
+    --ink: #1E3A45;
+    --soft: #5B7886;
+    --line: #D7E3E8;
+    --accent: #2E8C8C;
+    --accent-dark: #247070;
+    --accent-light: #E0F0EF;
+    --shadow: 0 2px 12px rgba(30, 58, 69, 0.08);
+    --radius: 14px;
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, "Tahoma", sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); }
+  img { max-width: 100%; height: auto; }
+
+  /* Header */
+  .site-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 20px;
+    background: #fff;
+    border-bottom: 1px solid var(--line);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    text-decoration: none;
+    color: var(--ink);
+    font-weight: 800;
+    font-size: 17px;
+  }
+  .brand img { width: 36px; height: 36px; border-radius: 8px; }
+  .header-cta {
+    display: inline-block;
+    padding: 9px 16px;
+    background: var(--accent);
+    color: #fff;
+    font-weight: 700;
+    font-size: 14px;
+    text-decoration: none;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+  .header-cta:hover { background: var(--accent-dark); }
+
+  /* Hero */
+  .hero {
+    padding: 40px 20px 48px;
+    text-align: center;
+    background: linear-gradient(180deg, #fff 0%, var(--bg) 100%);
+  }
+  .hero-badge {
+    display: inline-block;
+    padding: 5px 12px;
+    background: var(--accent-light);
+    color: var(--accent-dark);
+    font-size: 12px;
+    font-weight: 700;
+    border-radius: 999px;
+    margin-bottom: 16px;
+    letter-spacing: 0.02em;
+  }
+  .hero h1 {
+    margin: 0 0 14px;
+    font-size: clamp(28px, 6vw, 40px);
+    line-height: 1.15;
+    color: var(--ink);
+    max-width: 640px;
+    margin-inline: auto;
+  }
+  .hero-sub {
+    margin: 0 auto 28px;
+    font-size: clamp(16px, 3.5vw, 18px);
+    color: var(--soft);
+    max-width: 520px;
+  }
+  .hero-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 16px 32px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 17px;
+    font-weight: 800;
+    text-decoration: none;
+    border-radius: 999px;
+    box-shadow: 0 4px 16px rgba(46, 140, 140, 0.35);
+    transition: transform 0.15s, background 0.15s;
+  }
+  .hero-cta:hover { background: var(--accent-dark); transform: translateY(-1px); }
+  .hero-note {
+    margin-top: 14px;
+    font-size: 13px;
+    color: var(--soft);
+  }
+  .hero-ar {
+    margin-top: 28px;
+    padding-top: 24px;
+    border-top: 1px solid var(--line);
+    direction: rtl;
+    font-size: 15px;
+    color: var(--soft);
+    max-width: 520px;
+    margin-inline: auto;
+  }
+  .hero-ar strong { color: var(--ink); display: block; margin-bottom: 6px; font-size: 16px; }
+
+  /* Features */
+  .section {
+    padding: 48px 20px;
+    max-width: 960px;
+    margin: 0 auto;
+  }
+  .section-title {
+    text-align: center;
+    margin: 0 0 8px;
+    font-size: 24px;
+    color: var(--ink);
+  }
+  .section-lead {
+    text-align: center;
+    margin: 0 auto 36px;
+    color: var(--soft);
+    max-width: 520px;
+    font-size: 15px;
+  }
+  .features {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  @media (min-width: 600px) {
+    .features { grid-template-columns: 1fr 1fr; }
+  }
+  .feature-card {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 22px 20px;
+    box-shadow: var(--shadow);
+  }
+  .feature-icon {
+    font-size: 28px;
+    margin-bottom: 10px;
+    line-height: 1;
+  }
+  .feature-card h3 {
+    margin: 0 0 8px;
+    font-size: 17px;
+    color: var(--accent);
+  }
+  .feature-card p {
+    margin: 0;
+    font-size: 14px;
+    color: var(--soft);
+  }
+
+  /* Trust / social proof placeholder */
+  .trust {
+    background: #fff;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    padding: 40px 20px;
+    text-align: center;
+  }
+  .trust-inner { max-width: 640px; margin: 0 auto; }
+  .trust h2 { margin: 0 0 12px; font-size: 20px; }
+  .trust p { margin: 0; color: var(--soft); font-size: 15px; }
+  .trust-placeholder {
+    margin-top: 20px;
+    padding: 20px;
+    border: 2px dashed var(--line);
+    border-radius: var(--radius);
+    font-size: 13px;
+    color: var(--soft);
+    font-style: italic;
+  }
+
+  /* Privacy strip */
+  .privacy-strip {
+    padding: 32px 20px;
+    text-align: center;
+    max-width: 640px;
+    margin: 0 auto;
+  }
+  .privacy-strip ul {
+    list-style: none;
+    padding: 0;
+    margin: 16px 0 0;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 12px 24px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--accent);
+  }
+  .privacy-strip li::before { content: "✓ "; }
+
+  /* Bottom CTA */
+  .bottom-cta {
+    background: var(--accent);
+    color: #fff;
+    text-align: center;
+    padding: 48px 20px;
+  }
+  .bottom-cta h2 { margin: 0 0 10px; font-size: 22px; }
+  .bottom-cta p { margin: 0 0 24px; opacity: 0.9; font-size: 15px; }
+  .bottom-cta a {
+    display: inline-block;
+    padding: 14px 28px;
+    background: #fff;
+    color: var(--accent);
+    font-weight: 800;
+    text-decoration: none;
+    border-radius: 999px;
+    font-size: 16px;
+  }
+  .bottom-cta a:hover { background: var(--accent-light); }
+
+  /* Footer */
+  footer {
+    padding: 24px 20px 40px;
+    text-align: center;
+    font-size: 13px;
+    color: var(--soft);
+  }
+  footer a { font-weight: 600; }
+</style>
+</head>
+<body>
+
+<header class="site-header">
+  <a class="brand" href="./index.html">
+    <img src="./icons/icon-192.png" alt="" width="36" height="36">
+  Talk Board
+  </a>
+  <a class="header-cta" href="./index.html">Try free</a>
+</header>
+
+<section class="hero">
+  <span class="hero-badge">Free · No ads · Works offline</span>
+  <h1>Help your child speak with pictures</h1>
+  <p class="hero-sub">Talk Board is a free AAC app for nonspeaking children. Tap a picture to hear the word — in your language, your dialect, or your own voice.</p>
+  <a class="hero-cta" href="./index.html">Try Talk Board free →</a>
+  <p class="hero-note">Opens in your browser. No download or account needed to start.</p>
+  <div class="hero-ar">
+    <strong>لوحة الحديث — تواصل بالصور والصوت</strong>
+    تطبيق مجاني للأطفال غير الناطقين. اضغط على الصورة لسماع الكلمة — بالعربية أو اللهجات السودانية والجوباوية، أو بصوتك أنت.
+  </div>
+</section>
+
+<section class="section" id="features">
+  <h2 class="section-title">Built for real families</h2>
+  <p class="section-lead">Simple enough for a child. Powerful enough for caregivers, therapists, and teachers.</p>
+  <div class="features">
+    <article class="feature-card">
+      <div class="feature-icon" aria-hidden="true">🖼️</div>
+      <h3>Picture board</h3>
+      <p>Large, calm picture cards. Tap to speak. Build short sentences with a sentence bar kids can understand.</p>
+    </article>
+    <article class="feature-card">
+      <div class="feature-icon" aria-hidden="true">🎙️</div>
+      <h3>Your voice, your words</h3>
+      <p>Record personal voice clips for any word so the board sounds like home — mom, dad, or a familiar caregiver.</p>
+    </article>
+    <article class="feature-card">
+      <div class="feature-icon" aria-hidden="true">📴</div>
+      <h3>Works offline</h3>
+      <p>After the first load, the board works without internet. Perfect for home, school, and travel.</p>
+    </article>
+    <article class="feature-card">
+      <div class="feature-icon" aria-hidden="true">🌍</div>
+      <h3>Arabic &amp; dialect voices</h3>
+      <p>Text-to-speech in multiple languages, including Sudanese and Juba Arabic — with community-recorded dialect options.</p>
+    </article>
+    <article class="feature-card">
+      <div class="feature-icon" aria-hidden="true">📋</div>
+      <h3>First / Then schedule</h3>
+      <p>Visual routine support: show what comes first, then what happens next — great for transitions and daily routines.</p>
+    </article>
+    <article class="feature-card">
+      <div class="feature-icon" aria-hidden="true">🔒</div>
+      <h3>Privacy first</h3>
+      <p>No ads. No tracking. Board data stays on your device. Microphone is used only when you tap Record.</p>
+    </article>
+  </div>
+</section>
+
+<section class="trust" id="families">
+  <div class="trust-inner">
+    <h2>Made for caregivers who need something that just works</h2>
+    <p>Talk Board is designed with families of nonspeaking children in mind — especially Arabic-speaking and Sudanese communities who rarely find AAC tools in their own dialect.</p>
+    <div class="trust-placeholder" aria-label="Testimonials coming soon">
+      Family stories and therapist endorsements will appear here as we gather real feedback. We do not use fabricated reviews.
+    </div>
+  </div>
+</section>
+
+<section class="privacy-strip">
+  <h2 class="section-title" style="font-size:18px;margin-bottom:0;">Safe for children</h2>
+  <ul>
+    <li>No ads</li>
+    <li>No data selling</li>
+    <li>On-device storage</li>
+    <li><a href="./privacy.html">Privacy policy</a></li>
+  </ul>
+</section>
+
+<section class="bottom-cta">
+  <h2>Ready to try it?</h2>
+  <p>Start in seconds — tap below and add Talk Board to your home screen.</p>
+  <a href="./index.html">Open Talk Board</a>
+</section>
+
+<footer>
+  <p>Talk Board · Free AAC communication app</p>
+  <p><a href="./privacy.html">Privacy</a> · <a href="./index.html">Open app</a> · <a href="mailto:test911code@gmail.com">Support</a></p>
+  <p style="margin-top:12px;opacity:0.7;">Not a medical device. A communication aid for everyday use.</p>
+</footer>
+
+</body>
+</html>
