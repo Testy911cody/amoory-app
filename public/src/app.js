@@ -1201,7 +1201,7 @@ function setupSettings() {
     resetUsageStats();
     renderUsageStats();
     renderBoard();
-    toast("Usage stats reset.");
+    toast(t("usageReset"));
   });
   document.getElementById("unlockTierSelect")?.addEventListener("change", e => {
     const v = e.target.value;

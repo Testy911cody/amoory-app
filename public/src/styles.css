@@ -2,7 +2,7 @@
   --bg:#F2F6F8;--ink:#1E3A45;--soft:#5B7886;--line:#D7E3E8;--card:#FFFFFF;
   --accent:#2E8C8C;--shadow:0 2px 8px rgba(30,58,69,.08);
   --c-people:#E8A03D;--c-feelings:#D9695A;--c-food:#5BAA6F;
-  --c-do:#5B86C4;--c-need:#9C6FB0;--c-place:#3FA3A3;
+  --c-do:#5B86C4;--c-need:#9C6FB0;--c-place:#3FA3A3;--c-more:#5B86C4;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
 html,body{margin:0;height:100%;}
@@ -125,9 +125,12 @@ body[dir="rtl"] .word .lbl{font-size:18px;}
 
 /* per-card mic */
 .mic{position:absolute;top:6px;right:6px;width:34px;height:34px;border-radius:50%;
-  border:none;background:var(--bg);color:var(--soft);font-size:16px;line-height:1;
-  display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:2;}
+  border:2px solid var(--line);background:#fff;color:var(--soft);font-size:16px;line-height:1;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:3;
+  opacity:1;box-shadow:0 1px 4px rgba(30,58,69,.12);flex-shrink:0;}
 body[dir="rtl"] .mic{right:auto;left:6px;}
+.word--sm .mic{width:32px;height:32px;font-size:14px;top:4px;right:4px;}
+body[dir="rtl"] .word--sm .mic{right:auto;left:4px;}
 .word.has-rec .mic{background:#E0F0EF;color:var(--accent);}
 .word.recording{border-color:#D9695A!important;}
 .word.recording .mic{background:#D9695A;color:#fff;animation:pulse .9s infinite;}

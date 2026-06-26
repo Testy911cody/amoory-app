@@ -14,6 +14,8 @@
   .admin-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
   .admin-tab { padding: 8px 14px; border-radius: 999px; border: 1px solid var(--border, #ccc); background: #fff; cursor: pointer; }
   .admin-tab.active { background: var(--accent, #2E8C8C); color: #fff; border-color: transparent; }
+  .admin-tab.has-pending { font-weight: 800; }
+  .admin-tab.has-pending:not(.active) { border-color: var(--accent, #2E8C8C); color: var(--accent, #2E8C8C); }
   .admin-section { margin-bottom: 24px; }
   .admin-badge { font-size: 0.75rem; padding: 2px 8px; border-radius: 999px; background: #f0f4f4; color: #555; }
   .admin-badge.fallback { background: #fff3cd; color: #856404; }
@@ -68,13 +70,13 @@
 
       <section class="admin-section" id="tab-pending-global">
         <h2>Pending global recordings</h2>
-        <p class="muted">Voice clips waiting to become the baseline for a locale/dialect.</p>
+        <p class="muted">Voice clips waiting to become the baseline for a locale/dialect. Approve or reject each clip — sd and juba share a pool until a dialect-specific version is approved.</p>
         <div id="pendingGlobalAdmin"></div>
       </section>
 
       <section class="admin-section" id="tab-pending-community" hidden>
         <h2>Pending community words</h2>
-        <p class="muted">Shared words awaiting moderator approval.</p>
+        <p class="muted">Shared words awaiting moderator approval. Check dialect badge before approving — Arabic sd/juba entries may serve both dialects until overridden.</p>
         <div id="pendingCommunityAdmin"></div>
       </section>
 

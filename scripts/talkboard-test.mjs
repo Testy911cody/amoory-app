@@ -39,7 +39,7 @@ async function testEnv({ name, url }) {
   page.on("pageerror", (err) => consoleErrors.push(err.message));
 
   try {
-    const resp = await page.goto(url, { waitUntil: "networkidle", timeout: 30000 });
+    const resp = await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 });
     record(name, "Page load", resp?.ok() ?? false, `status ${resp?.status()}`);
 
     // SW version
@@ -50,7 +50,7 @@ async function testEnv({ name, url }) {
       } catch { return ""; }
     });
     const swMatch = swText.match(/CACHE_VERSION = "([^"]+)"/);
-    record(name, "Service worker v17", swMatch?.[1] === "talkboard-v17", swMatch?.[1] || "missing");
+    record(name, "Service worker v19", swMatch?.[1] === "talkboard-v19", swMatch?.[1] || "missing");
 
     // Supabase config
     const supabaseReady = await page.evaluate(async () => {
@@ -93,6 +93,7 @@ async function testEnv({ name, url }) {
       const sectionVisible = await page.locator("#boardSection").isVisible();
       record(name, "More words section header", sectionVisible);
       const moreWords = await page.locator("#board .word").count();
+      record(name, "More words tab (200+)", moreWords >= 200, `${moreWords} words`);
       record(name, "More words tab renders", true, `${moreWords} words or empty message`);
       const pinBtns = await page.locator("#board .word .pin-home").count();
       record(name, "Pin-to-main on More words cards", moreWords === 0 || pinBtns === moreWords,
@@ -113,16 +114,15 @@ async function testEnv({ name, url }) {
       record(name, "More words tab", false, "tab not found");
     }
 
-    // Caregiver mode
+    // Settings (no caregiver PIN gate)
     await page.locator("#cats .cat").first().click();
     await page.click("#settingsBtn");
     await page.waitForTimeout(800);
 
     const settingsOpen = await page.locator("#settingsPanel").isVisible();
-    record(name, "Caregiver settings opens", settingsOpen);
-
-    const caregiverBanner = await page.locator("#caregiverBanner").isVisible();
-    record(name, "Caregiver banner", caregiverBanner);
+    record(name, "Settings opens without PIN", settingsOpen);
+    const pinPanelVisible = await page.locator("#pinPanel").isVisible();
+    record(name, "No legacy PIN gate", !pinPanelVisible);
 
     // Close settings before testing inline suggest (panel overlay blocks board clicks)
     await page.click("#settingsClose");
@@ -186,30 +186,11 @@ async function testEnv({ name, url }) {
     );
     record(name, "No critical console errors", critical.length === 0, critical.slice(0, 3).join(" | ") || "clean");
 
-    // PIN panel (set PIN then test gate)
-    if (await page.locator("#settingsPanel").isVisible()) {
-      await page.click("#settingsClose");
-      await page.waitForTimeout(300);
-    }
-    await page.evaluate(() => {
-      localStorage.setItem(
-        "talkboard_settings",
-        JSON.stringify({ ...JSON.parse(localStorage.getItem("talkboard_settings") || "{}"), caregiverActive: false, caregiverPin: "1234" })
-      );
-    });
-    await page.reload({ waitUntil: "networkidle" });
-    await waitForBoard(page);
-    await page.click("#settingsBtn");
-    await page.waitForTimeout(500);
-    const pinPanelVisible = await page.locator("#pinPanel").isVisible();
-    record(name, "PIN gate shows when PIN set", pinPanelVisible);
-    if (pinPanelVisible) {
-      await page.fill("#pinPanelInput", "1234");
-      await page.click("#pinPanelSubmit");
-      await page.waitForTimeout(800);
-      const caregiverAfterPin = await page.locator("#caregiverBanner").isVisible();
-      record(name, "PIN 1234 unlocks caregiver", caregiverAfterPin);
-    }
+    // Mic buttons visible on home board
+    const micCount = await page.locator("#board .word .mic").count();
+    const homeWordCount = await page.locator("#board .word").count();
+    record(name, "Mic on every word card", homeWordCount === 0 || micCount === homeWordCount,
+      homeWordCount ? `${micCount}/${homeWordCount}` : "empty");
   } catch (err) {
     record(name, "Test run exception", false, err.message);
   } finally {

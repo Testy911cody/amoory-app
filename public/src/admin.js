@@ -12,6 +12,50 @@ import {
 import { recordingBadge } from "./dialect-fallback.js";
 import { WORDS } from "./data.js";
 
+const DIALECT_LABELS = { sd: "Sudanese", juba: "Juba", eg: "Egyptian", msa: "MSA", default: "default" };
+
+function dialectBadgeHtml(locale, dialect) {
+  if (!dialect && !locale) return "";
+  const d = dialect || "default";
+  const label = DIALECT_LABELS[d] || d;
+  const shared = locale === "ar" && (d === "sd" || d === "juba");
+  const cls = shared ? "shared" : "native";
+  const hint = shared ? " · sd↔juba pool until dialect-specific clip approved" : "";
+  return `<span class="admin-badge ${cls}" title="${locale}/${d}${hint}">${label}</span>`;
+}
+
+let pendingCounts = { global: 0, community: 0 };
+
+function updateTabCounts(partial = {}) {
+  pendingCounts = { ...pendingCounts, ...partial };
+  document.querySelectorAll(".admin-tab").forEach(btn => {
+    const tab = btn.dataset.tab;
+    let n = 0;
+    if (tab === "pending-global") n = pendingCounts.global;
+    else if (tab === "pending-community") n = pendingCounts.community;
+    const base = btn.dataset.label || btn.textContent.replace(/\s*\(\d+\)\s*$/, "").trim();
+    if (!btn.dataset.label) btn.dataset.label = base;
+    btn.textContent = n > 0 ? `${base} (${n})` : base;
+    btn.classList.toggle("has-pending", n > 0);
+  });
+}
+
+async function refreshPendingCounts() {
+  if (!SUPABASE_READY) return;
+  try {
+    const [{ items: globalItems, isAdmin: gAdmin }, { items: commItems, isAdmin: cAdmin }] = await Promise.all([
+      fetchPendingGlobalRecordings(),
+      fetchOnlinePending()
+    ]);
+    if (gAdmin || cAdmin) {
+      updateTabCounts({
+        global: gAdmin ? globalItems.length : pendingCounts.global,
+        community: cAdmin ? commItems.length : pendingCounts.community
+      });
+    }
+  } catch { /* ignore */ }
+}
+
 const el = {
   auth: document.getElementById("adminAuth"),
   authStatus: document.getElementById("adminAuthStatus"),
@@ -68,14 +112,16 @@ async function renderPendingGlobal() {
       return;
     }
     if (!items.length) {
-      el.pendingGlobal.innerHTML = `<p class="muted">No pending global recordings.</p>`;
+      el.pendingGlobal.innerHTML = `<p class="muted">No pending global recordings — you're all caught up.</p>`;
+      updateTabCounts({ global: 0 });
       return;
     }
     el.pendingGlobal.innerHTML = "";
+    updateTabCounts({ global: items.length });
     for (const item of items) {
       const row = renderRow({
         title: wordLabel(item.wordId),
-        meta: `${item.locale} / ${item.dialect || "default"} · ${item.lang}${item.dialect === "sd" || item.dialect === "juba" ? " · dialect override" : ""}`,
+        meta: `${item.locale} / ${item.dialect || "default"} · ${item.lang}${dialectBadgeHtml(item.locale, item.dialect)}`,
         audioUrl: item.audioUrl,
         actions: `
           <button type="button" class="btn-primary" data-action="approve-global" data-id="${item.id}">Approve</button>
@@ -99,14 +145,16 @@ async function renderPendingCommunity() {
       return;
     }
     if (!items.length) {
-      el.pendingCommunity.innerHTML = `<p class="muted">No pending community words.</p>`;
+      el.pendingCommunity.innerHTML = `<p class="muted">No pending community words — you're all caught up.</p>`;
+      updateTabCounts({ community: 0 });
       return;
     }
     el.pendingCommunity.innerHTML = "";
+    updateTabCounts({ community: items.length });
     for (const item of items) {
       const row = renderRow({
         title: `${item.emoji} ${item.text}`,
-        meta: `${item.locale} / ${item.dialect || "default"} · ${item.category}`,
+        meta: `${item.locale} / ${item.dialect || "default"} · ${item.category} ${dialectBadgeHtml(item.locale, item.dialect)}`,
         audioUrl: item.audioUrl,
         actions: `
           <button type="button" class="btn-primary" data-action="approve-community" data-id="${item.id}">Approve</button>
@@ -226,6 +274,7 @@ async function reflectAuth(user) {
   }
   el.denied.hidden = true;
   el.main.hidden = false;
+  await refreshPendingCounts();
   switchTab(activeTab);
 }
 

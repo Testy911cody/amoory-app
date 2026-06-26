@@ -47,7 +47,7 @@ Talk Board is a FREE picture communication app. Tap a picture to hear the word �
 ✓ Works offline after first load
 ✓ No account needed to start
 ✓ No ads, no tracking
-✓ First/Then visual schedules for routines
+✓ 200+ words — pin favorites to the home screen
 
 Try it free in your browser — takes seconds.
 ```
@@ -64,7 +64,7 @@ Try it free in your browser — takes seconds.
 
 ✓ يعمل دون اتصال
 ✓ بدون إعلانات أو تتبّع
-✓ جدول أولاً / ثم للروتين اليومي
+✓ أكثر من 200 كلمة — ثبّت المفضلة على الشاشة الرئيسية
 
 جرّبه مجاناً الآن.
 ```
@@ -127,7 +127,7 @@ Try free: no download required to start.
 | 6 | For Nonspeaking Children | 24 |
 | 7 | No Ads, Privacy First | 21 |
 | 8 | Sudanese & Juba Arabic | 22 |
-| 9 | Visual Schedule for Kids | 24 |
+| 9 | Pin Favorite Words to Home | 24 |
 | 10 | Try Free in Your Browser | 24 |
 
 ### Descriptions (max 90 characters each)
@@ -136,7 +136,7 @@ Try free: no download required to start.
 |---|-------------|-------|
 | 1 | Tap pictures to speak. Free AAC app with Arabic dialect voices & personal recordings. | 85 |
 | 2 | Works offline after first load. No ads or tracking. Built for nonspeaking children. | 83 |
-| 3 | Record mom or dad's voice. First/Then schedules. Try Talk Board free in your browser. | 85 |
+| 3 | Record mom or dad's voice. Pin favorite words. Try Talk Board free in your browser. | 84 |
 | 4 | لوحة الحديث — تطبيق مجاني للتواصل بالصور. لهجات عربية وسودانية. جرّبه الآن. | 68 |
 
 ### Sitelinks (text + description)
@@ -177,7 +177,7 @@ juba arabic
 [3–8s]  Tap "water" → word plays. Tap "mom" → recorded voice plays.
         VO: "Talk Board. Free. Works offline."
 
-[8–12s] Show dialect/language setting. Quick First/Then panel.
+[8–12s] Show dialect/language setting. Tap ⭐ to pin a word to home.
         VO: "Arabic, Sudanese, Juba — or your own voice."
 
 [12–15s] Logo + CTA card: "Try free — housegames.club/amoory"
@@ -197,8 +197,8 @@ juba arabic
 [12–20s] Caregiver holds ⚙️, records voice for "love". Child taps → mom's voice.
          VO: "Record your voice for any word. No account needed."
 
-[20–26s] Phone in airplane mode — board still works. First/Then: "First bath, Then story."
-         VO: "Works offline. Visual schedules for routines."
+[20–26s] Phone in airplane mode — board still works. Child taps pinned favorites.
+         VO: "Works offline. Pin the words they use every day."
 
 [26–30s] End card: Talk Board logo, "Try free" URL, privacy line.
          VO: "Talk Board — free, private, built for families like yours."

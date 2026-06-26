@@ -80,6 +80,10 @@
     white-space: nowrap;
   }
   .header-cta:hover { background: var(--accent-dark); }
+  @media (max-width: 480px) {
+    .site-header { padding: 10px 14px; }
+    .header-cta { padding: 10px 14px; font-size: 13px; }
+  }
 
   /* Hero */
   .hero {
@@ -256,6 +260,14 @@
     font-size: 16px;
   }
   .bottom-cta a:hover { background: var(--accent-light); }
+  @media (max-width: 480px) {
+    .hero { padding: 32px 16px 40px; }
+    .hero-cta { width: 100%; justify-content: center; padding: 14px 20px; }
+    .section { padding: 36px 16px; }
+    .features { grid-template-columns: 1fr; gap: 12px; }
+    .bottom-cta { padding: 40px 16px calc(40px + env(safe-area-inset-bottom)); }
+    .bottom-cta a { width: 100%; max-width: 280px; }
+  }
 
   /* Footer */
   footer {
@@ -314,9 +326,9 @@
       <p>Text-to-speech in multiple languages, including Sudanese and Juba Arabic — with community-recorded dialect options.</p>
     </article>
     <article class="feature-card">
-      <div class="feature-icon" aria-hidden="true">📋</div>
-      <h3>First / Then schedule</h3>
-      <p>Visual routine support: show what comes first, then what happens next — great for transitions and daily routines.</p>
+      <div class="feature-icon" aria-hidden="true">⭐</div>
+      <h3>200+ words, pin favorites</h3>
+      <p>Browse 200+ words on the board. Pin the ones your child uses most to the home screen — hold any card to re-record in your voice.</p>
     </article>
     <article class="feature-card">
       <div class="feature-icon" aria-hidden="true">🔒</div>
