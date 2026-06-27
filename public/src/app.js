@@ -33,6 +33,7 @@ import {
   KID_VIEWS, wordsForKidView, cardSizeClass, labelForKidView, getUnlockedTier,
   boardViewKey, applySavedOrder
 } from "./kid-ui.js";
+import { HOME_MAX_WORDS } from "./priorities.js";
 import {
   recordWordUse, getUniqueWordCount, setManualTier, resetUsageStats, getUsageStore,
   setCardOrderForView, pinWord, unpinWord, isWordPinned
@@ -812,19 +813,86 @@ function setupBoardDragDrop(board, viewKey) {
   });
 }
 
+/** Touch-friendly pointer reorder for Talk (home) — whole card is the drag handle. */
+function setupHomePointerReorder(board, viewKey) {
+  let active = null;
+
+  const clearDragUi = () => {
+    board.querySelectorAll(".word.dragging, .word.drag-over").forEach(c => {
+      c.classList.remove("dragging", "drag-over");
+    });
+  };
+
+  board.addEventListener("pointerdown", e => {
+    if (e.button > 0) return;
+    const card = e.target.closest(".word");
+    if (!card || wordPressIgnored(e.target)) return;
+    active = {
+      id: card.dataset.wordId,
+      el: card,
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      moved: false
+    };
+    card.setPointerCapture(e.pointerId);
+  });
+
+  board.addEventListener("pointermove", e => {
+    if (!active || e.pointerId !== active.pointerId) return;
+    const dx = e.clientX - active.startX;
+    const dy = e.clientY - active.startY;
+    if (!active.moved && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) {
+      active.moved = true;
+      active.el.classList.add("dragging");
+    }
+    if (!active.moved) return;
+    e.preventDefault();
+    const under = document.elementFromPoint(e.clientX, e.clientY)?.closest(".word");
+    board.querySelectorAll(".word.drag-over").forEach(c => c.classList.remove("drag-over"));
+    if (under && under !== active.el && board.contains(under)) {
+      under.classList.add("drag-over");
+    }
+  });
+
+  const finish = (e) => {
+    if (!active || e.pointerId !== active.pointerId) return;
+    const { el, id, moved } = active;
+    active = null;
+    try { el.releasePointerCapture(e.pointerId); } catch {}
+    if (moved) {
+      const under = document.elementFromPoint(e.clientX, e.clientY)?.closest(".word");
+      clearDragUi();
+      if (under && under.dataset.wordId !== id) {
+        reorderBoardCards(board, id, under.dataset.wordId, viewKey);
+      }
+      el._skipClick = true;
+      setTimeout(() => { el._skipClick = false; }, 0);
+    } else {
+      clearDragUi();
+    }
+  };
+
+  board.addEventListener("pointerup", finish);
+  board.addEventListener("pointercancel", finish);
+}
+
 function renderBoard() {
   el.board.innerHTML = "";
   const list = wordsForBoard();
   const recordedKeys = getRecordedKeys();
   const kidMode = !settings.fullBoard;
+  const isHomeView = kidMode && state.kidView === "home";
+  el.board.classList.toggle("board--home", isHomeView);
   const viewKey = getBoardViewKey();
   const defaultColor = KID_VIEWS.find(v => v.id === state.kidView)?.color
     || CATEGORIES.find(c => c.id === state.category)?.color
     || "var(--accent)";
+  const dragLabel = t("dragToReorder");
 
   list.forEach(w => {
     const key = recKey(w.id, settings.locale, state.dialect);
-    const sizeClass = kidMode ? cardSizeClass(w) : "";
+    const sizeClass = isHomeView ? "word--home" : (kidMode ? cardSizeClass(w) : "");
     const card = document.createElement("div");
     card.className = `word${sizeClass ? ` ${sizeClass}` : ""}`;
     card.dataset.wordId = w.id;
@@ -846,7 +914,7 @@ function renderBoard() {
     if (w.source === "personal") badges.push(`<span class="src-badge" title="${t("myWords")}">⭐</span>`);
 
     const micHtml = `<button class="mic" title="${t("recordHint")}">🎤</button>`;
-    const dragHtml = `<span class="drag-handle" draggable="true" title="Drag to reorder" aria-hidden="true">⠿</span>`;
+    const dragHtml = `<span class="drag-handle" draggable="${!isHomeView}" title="${dragLabel}" aria-label="${dragLabel}">⠿</span>`;
     const showPinBtn = state.kidView === "more";
     const showUnpinBtn = state.kidView === "home" && pinned && w.tier !== 0;
     const pinHtml = showPinBtn
@@ -854,19 +922,22 @@ function renderBoard() {
       : showUnpinBtn
         ? `<button type="button" class="pin-home is-pinned" title="${t("unpinFromHome")}" aria-label="${t("unpinFromHome")}">★</button>`
         : "";
-    const labelHtml = kidMode && (w.tier === 0 || w.isCore)
+    const labelHtml = isHomeView
       ? `<span class="lbl lbl-min">${labelForWord(w, settings.locale, state.dialect)}</span>`
-      : wordLabelHtml(w);
+      : kidMode && (w.tier === 0 || w.isCore)
+        ? `<span class="lbl lbl-min">${labelForWord(w, settings.locale, state.dialect)}</span>`
+        : wordLabelHtml(w);
 
     card.innerHTML = dragHtml + micHtml + pinHtml
       + `<span class="emoji">${w.emoji}</span>${labelHtml}${badges.join("")}`;
 
     attachWordCardLongPress(card, w, async () => {
+      if (card._skipClick) return;
       recordWordUse(w.id);
       await speakWord(w);
       state.sentence.push(w);
       renderStrip();
-      if (kidMode) {
+      if (kidMode && !isHomeView) {
         card.classList.remove("word--xl", "word--lg", "word--md", "word--sm");
         card.classList.add(cardSizeClass(w));
       }
@@ -899,8 +970,10 @@ function renderBoard() {
           unpinWord(w.id);
           toast(t("unpinnedFromHome"));
         } else {
+          const visible = wordsForKidView("home", mergeAllWords, settings.locale, state.dialect);
+          const wasFull = visible.length >= HOME_MAX_WORDS;
           pinWord(w.id);
-          toast(t("pinnedToHome"));
+          toast(wasFull ? t("pinnedToHomeFull") : t("pinnedToHome"));
         }
         renderBoard();
         if (state.kidView === "more" || state.kidView === "home") updateBoardSection();
@@ -910,7 +983,11 @@ function renderBoard() {
     el.board.appendChild(card);
   });
 
-  setupBoardDragDrop(el.board, viewKey);
+  if (isHomeView) {
+    setupHomePointerReorder(el.board, viewKey);
+  } else {
+    setupBoardDragDrop(el.board, viewKey);
+  }
 
   if (!list.length && state.kidView === "more") {
     const msg = document.createElement("p");

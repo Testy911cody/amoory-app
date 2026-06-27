@@ -95,4 +95,4 @@ export const UNLOCK_RULES = {
 };
 
 export const PROMOTE_THRESHOLD = 5; // taps before visual size boost
-export const HOME_MAX_WORDS = 16;
+export const HOME_MAX_WORDS = 100;

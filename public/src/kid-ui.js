@@ -125,16 +125,31 @@ export function cardSizeClass(word) {
   return "word--sm";
 }
 
-/** Words on the Talk (home) tab: tier 0 + pinned words, mixed & capped. */
+/** Words on the Talk (home) tab — up to HOME_MAX_WORDS (100).
+   Order: core → pinned → tier 0 → usage-promoted → fill from vocabulary.
+   Pinned words are always kept; auto-filled tail drops to More when full. */
 export function computeHomeWords(all, pinnedIds) {
   const pinned = new Set(pinnedIds);
-  const homePool = all.filter(w => w.tier === 0 || pinned.has(w.id));
-  const core = sortWords(homePool.filter(w => w.isCore));
-  const pinnedNonCore = sortWords(homePool.filter(w => !w.isCore && pinned.has(w.id)));
-  const restPool = homePool.filter(w => !w.isCore && !pinned.has(w.id));
-  const slotsLeft = Math.max(0, HOME_MAX_WORDS - core.length - pinnedNonCore.length);
-  const rest = mixHomeWords(sortWords(restPool)).slice(0, slotsLeft);
-  return [...core, ...pinnedNonCore, ...rest];
+  const seen = new Set();
+  const result = [];
+
+  const push = (words) => {
+    for (const w of words) {
+      if (result.length >= HOME_MAX_WORDS) return;
+      if (seen.has(w.id)) continue;
+      seen.add(w.id);
+      result.push(w);
+    }
+  };
+
+  push(sortWords(all.filter(w => w.isCore)));
+  push(sortWords(all.filter(w => pinned.has(w.id))));
+  push(mixHomeWords(sortWords(all.filter(w => w.tier === 0 && !seen.has(w.id)))));
+  push(sortWords(all.filter(w =>
+    !seen.has(w.id) && getWordStats(w.id).count >= PROMOTE_THRESHOLD
+  )));
+  push(mixHomeWords(sortWords(all.filter(w => !seen.has(w.id)))));
+  return result;
 }
 
 export function homeWordIdSet(all, pinnedIds) {
