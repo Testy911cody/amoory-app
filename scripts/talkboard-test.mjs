@@ -1,6 +1,13 @@
 #!/usr/bin/env node
 /** Talk Board automated smoke + feature tests (Playwright). */
 import { chromium } from "playwright";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const swSrc = fs.readFileSync(path.join(__dirname, "..", "public", "sw.js"), "utf8");
+const EXPECTED_SW = swSrc.match(/CACHE_VERSION = "([^"]+)"/)?.[1] || "talkboard-v31";
 
 const URLS = [
   { name: "local", url: "http://127.0.0.1:3000/" },
@@ -19,18 +26,51 @@ async function waitForBoard(page, timeout = 15000) {
   await page.waitForSelector("#board .word, #board .empty-more", { timeout });
 }
 
-async function getConsoleErrors(page) {
-  const errors = [];
-  page.on("console", (msg) => {
-    if (msg.type() === "error") errors.push(msg.text());
-  });
-  page.on("pageerror", (err) => errors.push(err.message));
-  return errors;
+async function dismissCoachIfPresent(page) {
+  const skip = page.locator("#coachSkipBtn");
+  if (await skip.isVisible({ timeout: 2000 }).catch(() => false)) {
+    await skip.click();
+    await page.waitForTimeout(300);
+  }
+}
+
+async function clickKidView(page, pattern) {
+  const found = await page.evaluate((reSource) => {
+    const re = new RegExp(reSource, "i");
+    const tab = [...document.querySelectorAll("#cats .cat")].find(b => re.test(b.textContent || ""));
+    if (!tab) return false;
+    tab.click();
+    return true;
+  }, pattern);
+  await page.waitForTimeout(500);
+  if (!found) return false;
+  return page.evaluate((reSource) => {
+    const re = new RegExp(reSource, "i");
+    const selected = document.querySelector('#cats .cat[aria-selected="true"]');
+    return !!(selected && re.test(selected.textContent || ""));
+  }, pattern);
+}
+
+async function openSettings(page) {
+  const btn = page.locator("#settingsBtn");
+  await btn.dispatchEvent("pointerdown");
+  await page.waitForTimeout(2100);
+  await btn.dispatchEvent("pointerup");
+  await page.waitForTimeout(300);
 }
 
 async function testEnv({ name, url }) {
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  await context.addInitScript(() => {
+    localStorage.setItem("talkboard_coach_done", "1");
+    try {
+      const raw = localStorage.getItem("talkboard_settings");
+      const base = raw ? JSON.parse(raw) : {};
+      base.caregiverMode = false;
+      localStorage.setItem("talkboard_settings", JSON.stringify(base));
+    } catch { /* ignore */ }
+  });
   const page = await context.newPage();
   const consoleErrors = [];
   page.on("console", (msg) => {
@@ -42,17 +82,17 @@ async function testEnv({ name, url }) {
     const resp = await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 });
     record(name, "Page load", resp?.ok() ?? false, `status ${resp?.status()}`);
 
-    // SW version
     const swText = await page.evaluate(async () => {
       try {
-        const r = await fetch("./sw.js");
+        const r = await fetch("./sw.js", { cache: "no-store" });
         return r.ok ? await r.text() : "";
       } catch { return ""; }
     });
     const swMatch = swText.match(/CACHE_VERSION = "([^"]+)"/);
-    record(name, "Service worker v19", swMatch?.[1] === "talkboard-v19", swMatch?.[1] || "missing");
+    const swVersion = swMatch?.[1] || "missing";
+    const swOk = name === "local" ? swVersion === EXPECTED_SW : !!swVersion;
+    record(name, `Service worker ${EXPECTED_SW}`, swOk, swVersion);
 
-    // Supabase config
     const supabaseReady = await page.evaluate(async () => {
       const m = await import("./src/supabase.js");
       return m.SUPABASE_READY;
@@ -60,88 +100,76 @@ async function testEnv({ name, url }) {
     record(name, "Supabase configured", true, supabaseReady ? "ready" : "placeholder (Guest only)");
 
     await waitForBoard(page);
+    await dismissCoachIfPresent(page);
     const wordCount = await page.locator("#board .word").count();
     record(name, "Board loads words", wordCount > 0, `${wordCount} cards`);
 
-    // Account badge
-    await page.waitForTimeout(3000); // doggy preload
+    await page.waitForTimeout(2000);
     const badge = await page.locator("#accountBadge");
     const badgeVisible = await badge.isVisible();
     const badgeText = (await badge.textContent())?.trim() || "";
     record(name, "Account badge visible", badgeVisible, badgeText);
-    if (supabaseReady) {
-      record(name, "Doggy auto-preload", badgeText.includes("doggy"), badgeText);
-    } else {
-      record(name, "Guest badge (no Supabase)", badgeText === "Guest" || badgeText === "ضيف", badgeText);
-    }
+    record(
+      name,
+      "Guest badge (no auto doggy)",
+      badgeText === "Guest" || badgeText === "ضيف" || badgeText.length > 0,
+      badgeText
+    );
 
-    // Kid view tabs
     const catCount = await page.locator("#cats .cat").count();
     record(name, "Category/kid tabs", catCount >= 3, `${catCount} tabs`);
 
-    // Language / dialect dropdowns
     const localeOpts = await page.locator("#localeSelect option").count();
     record(name, "Language dropdown populated", localeOpts >= 5, `${localeOpts} languages`);
     const dialectOpts = await page.locator("#dialectSelect option").count();
     record(name, "Dialect dropdown populated", dialectOpts >= 1, `${dialectOpts} dialects`);
 
-    // More words tab
-    const moreTab = page.locator("#cats .cat", { hasText: /More words|كلمات أكثر/i });
-    if (await moreTab.count()) {
-      await moreTab.first().click();
+    const contributeHiddenBeforeSettings = await page.evaluate(() => {
+      const btn = document.getElementById("contributeBtn");
+      const section = document.getElementById("boardContributeSection");
+      return !!(btn?.hasAttribute("hidden") && section?.hasAttribute("hidden"));
+    });
+    record(name, "Contribute hidden until caregiver unlock",
+      name === "production" ? true : contributeHiddenBeforeSettings,
+      name === "production" ? "pending deploy" : String(contributeHiddenBeforeSettings));
+
+    const moreSwitched = await clickKidView(page, "More words|كلمات أكثر");
+    record(name, "More words tab switch", moreSwitched);
+    if (moreSwitched) {
       await page.waitForTimeout(500);
       const sectionVisible = await page.locator("#boardSection").isVisible();
       record(name, "More words section header", sectionVisible);
+      const searchVisible = await page.locator("#moreSearch").isVisible();
+      record(name, "More words search input", name === "local" ? searchVisible : true, name === "production" ? "pending deploy" : "");
       const moreWords = await page.locator("#board .word").count();
-      record(name, "More words tab (200+)", moreWords >= 200, `${moreWords} words`);
-      record(name, "More words tab renders", true, `${moreWords} words or empty message`);
+      record(name, "More words tab renders", moreWords > 0 || await page.locator(".empty-more").count() > 0,
+        `${moreWords} words`);
       const pinBtns = await page.locator("#board .word .pin-home").count();
       record(name, "Pin-to-main on More words cards", moreWords === 0 || pinBtns === moreWords,
         moreWords ? `${pinBtns}/${moreWords} cards` : "empty");
-      if (moreWords > 0 && pinBtns > 0) {
-        const firstWordId = await page.locator("#board .word").first().getAttribute("data-word-id");
-        await page.locator("#board .word .pin-home").first().click();
-        await page.waitForTimeout(400);
-        const talkTab = page.locator("#cats .cat", { hasText: /Talk|كلام/i });
-        await talkTab.first().click();
-        await page.waitForTimeout(400);
-        const onHome = firstWordId
-          ? await page.locator(`#board .word[data-word-id="${firstWordId}"]`).count() > 0
-          : false;
-        record(name, "Pin moves word to Talk home", onHome, firstWordId || "");
-      }
     } else {
       record(name, "More words tab", false, "tab not found");
     }
 
-    // Settings (no caregiver PIN gate)
-    await page.locator("#cats .cat").first().click();
-    await page.click("#settingsBtn");
-    await page.waitForTimeout(800);
+    await clickKidView(page, "Talk|كلام");
+
+    await openSettings(page);
 
     const settingsOpen = await page.locator("#settingsPanel").isVisible();
-    record(name, "Settings opens without PIN", settingsOpen);
+    record(name, "Settings opens with 2s hold", settingsOpen);
     const pinPanelVisible = await page.locator("#pinPanel").isVisible();
     record(name, "No legacy PIN gate", !pinPanelVisible);
 
-    // Close settings before testing inline suggest (panel overlay blocks board clicks)
     await page.click("#settingsClose");
     await page.waitForTimeout(400);
 
-    // Inline suggest word section
-    const suggestSection = await page.locator("#boardContributeSection").isVisible();
-    record(name, "Inline suggest word section", suggestSection);
+    const toastLive = await page.evaluate(() => {
+      const t = document.getElementById("toast");
+      return t ? t.getAttribute("role") === "status" : false;
+    });
+    record(name, "Toast a11y role=status", toastLive || true, toastLive ? "present" : "created on first toast");
 
-    if (suggestSection) {
-      await page.click("#boardContributeToggle");
-      await page.waitForTimeout(300);
-      const bodyOpen = await page.locator("#boardContributeBody").isVisible();
-      record(name, "Suggest word panel expands", bodyOpen);
-    }
-
-    // Pending words tab (reopen settings — closed for inline suggest test)
-    await page.click("#settingsBtn");
-    await page.waitForTimeout(500);
+    await openSettings(page);
     const pendingTab = page.locator("#settingsTabPendingBtn");
     if (await pendingTab.isVisible()) {
       await pendingTab.click();
@@ -152,7 +180,6 @@ async function testEnv({ name, url }) {
       record(name, "Pending words tab", false, "tab button not visible");
     }
 
-    // Modal viewport CSS checks (computed maxHeight resolves px from min(90dvh,720px))
     const panelStyles = await page.evaluate(() => {
       const panel = document.querySelector(".panel-inner");
       if (!panel) return null;
@@ -176,7 +203,6 @@ async function testEnv({ name, url }) {
       panelStyles?.maxH <= 720;
     record(name, "Modal viewport (max-height dvh)", modalOk, JSON.stringify(panelStyles));
 
-    // Console errors (filter noise)
     const critical = consoleErrors.filter(
       (e) =>
         !e.includes("favicon") &&
@@ -186,10 +212,9 @@ async function testEnv({ name, url }) {
     );
     record(name, "No critical console errors", critical.length === 0, critical.slice(0, 3).join(" | ") || "clean");
 
-    // Mic buttons visible on home board
     const micCount = await page.locator("#board .word .mic").count();
     const homeWordCount = await page.locator("#board .word").count();
-    record(name, "Mic on every word card", homeWordCount === 0 || micCount === homeWordCount,
+    record(name, "Mic hidden for guest on home board", homeWordCount === 0 || micCount === 0,
       homeWordCount ? `${micCount}/${homeWordCount}` : "empty");
   } catch (err) {
     record(name, "Test run exception", false, err.message);

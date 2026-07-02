@@ -43,7 +43,7 @@
     <span id="offlineBadge" class="offline-badge" hidden aria-live="polite"></span>
     <span id="langIndicator" class="lang-chip" aria-live="polite" title="Current speak language"></span>
     <div class="topbar-actions">
-      <button class="icon-btn" id="contributeBtn" title="Suggest a word">➕</button>
+      <button class="icon-btn" id="contributeBtn" title="Suggest a word" hidden>➕</button>
     </div>
   </div>
 
@@ -65,11 +65,15 @@
   <div class="board-section" id="boardSection" hidden>
     <h2 class="board-section-title" id="boardSectionTitle"></h2>
     <p class="muted board-section-hint" id="boardSectionHint"></p>
+    <label class="more-search-wrap" id="moreSearchWrap" hidden>
+      <span class="sr-only" id="moreSearchLbl">Search</span>
+      <input type="search" id="moreSearch" class="more-search" autocomplete="off" enterkeyhint="search">
+    </label>
   </div>
   <div class="board" id="board"></div>
 
   <!-- Inline suggest-word -->
-  <section class="board-contribute" id="boardContributeSection" aria-labelledby="boardContributeTitle">
+  <section class="board-contribute" id="boardContributeSection" aria-labelledby="boardContributeTitle" hidden>
     <button type="button" class="board-contribute-toggle" id="boardContributeToggle" aria-expanded="false" aria-controls="boardContributeBody">
       <span id="boardContributeTitle">Suggest a word</span>
       <span class="board-contribute-chevron" aria-hidden="true">▼</span>
@@ -94,7 +98,7 @@
           <button type="button" class="btn-record" id="boardContribRecordBtn">🎤 Record</button>
         </div>
         <label class="field check" id="boardShareOnlineField" hidden>
-          <input type="checkbox" id="boardContribShareOnline" checked>
+          <input type="checkbox" id="boardContribShareOnline">
           <span id="boardShareOnlineLbl">Contribute free words to the community dialect library</span>
         </label>
         <p class="muted board-contribute-note" id="boardContribNote"></p>
@@ -139,23 +143,41 @@
         <div class="settings-tab-panel" id="settingsTabGeneral">
         <div id="settingsLang">
           <label class="field">
-            <span>Language</span>
+            <span id="settingsLangLbl">Language</span>
             <select id="settingsLocaleSelect" aria-label="Choose language"></select>
           </label>
           <label class="field">
-            <span>Dialect</span>
+            <span id="settingsDialectLbl">Dialect</span>
             <select id="settingsDialectSelect" aria-label="Choose dialect"></select>
           </label>
         </div>
 
         <hr>
-        <h3>Word learning</h3>
+        <h3 id="wordLearningTitle">Word learning</h3>
         <p class="muted" id="usageStats"></p>
         <button type="button" class="btn-secondary" id="resetUsageBtn">Reset word usage stats</button>
 
         <hr>
+        <label class="field check">
+          <input type="checkbox" id="caregiverModeToggle">
+          <span id="caregiverModeLbl">Caregiver mode</span>
+        </label>
+        <p class="muted" id="caregiverModeHint"></p>
+
+        <label class="field check">
+          <input type="checkbox" id="showAllOnHomeToggle">
+          <span id="showAllOnHomeLbl">Show all words on Talk tab</span>
+        </label>
+        <p class="muted" id="showAllOnHomeHint"></p>
+
         <label class="field">
-          <span>Voice</span>
+          <span id="boardPresetLbl">Home board size</span>
+          <select id="boardPresetSelect" aria-label="Home board size"></select>
+        </label>
+
+        <hr>
+        <label class="field">
+          <span id="voiceLbl">Voice</span>
           <div class="row">
             <select id="voiceSelect" aria-label="Choose voice"></select>
             <button type="button" class="btn-secondary" id="previewVoiceBtn">Preview</button>
@@ -163,10 +185,10 @@
         </label>
         <label class="field check">
           <input type="checkbox" id="bilingualToggle">
-          <span>Show second language on cards</span>
+          <span id="bilingualLbl">Show second language on cards</span>
         </label>
         <label class="field">
-          <span>Second language</span>
+          <span id="secondaryLangLbl">Second language</span>
           <select id="secondaryLocaleSelect" aria-label="Second language"></select>
         </label>
 
@@ -200,27 +222,27 @@
         </div>
 
         <hr>
-        <h3>Your personal recordings</h3>
+        <h3 id="personalRecTitle">Your personal recordings</h3>
         <div id="personalRecList"></div>
 
         <hr>
-        <h3>My words</h3>
+        <h3 id="myWordsTitle">My words</h3>
         <div id="customWordsList"></div>
         <form id="customWordForm">
           <label class="field">
-            <span>Word label (current language)</span>
-            <input type="text" id="customWordLabel" maxlength="80" required placeholder="Type the word">
+            <span id="customWordLabelLbl">Word label (current language)</span>
+            <input type="text" id="customWordLabel" maxlength="80" required placeholder="">
           </label>
           <label class="field">
-            <span>English hint (optional)</span>
-            <input type="text" id="customWordHint" maxlength="80" placeholder="e.g. water">
+            <span id="customWordHintLbl">English hint (optional)</span>
+            <input type="text" id="customWordHint" maxlength="80" placeholder="">
           </label>
           <label class="field">
-            <span>Emoji</span>
+            <span id="customWordEmojiLbl">Emoji</span>
             <input type="text" id="customWordEmoji" maxlength="4" placeholder="💬">
           </label>
           <label class="field">
-            <span>Category</span>
+            <span id="customWordCategoryLbl">Category</span>
             <select id="customWordCategory"></select>
           </label>
           <label class="field check">
@@ -228,18 +250,18 @@
             <span id="customWordShareLbl">Share with community</span>
           </label>
           <div class="field">
-            <span>Record your voice</span>
+            <span id="customWordRecordLbl">Record your voice</span>
             <button type="button" class="btn-record" id="customWordRecordBtn">🎤 Record</button>
           </div>
-          <button type="submit" class="btn-primary">Add my word</button>
+          <button type="submit" class="btn-primary" id="customWordSubmitBtn">Add my word</button>
         </form>
 
         <hr>
         <p class="muted" id="adminLinkRow" hidden>
-          <a href="./admin.html" class="link-quiet">Admin panel</a>
+          <a href="./admin.html" class="link-quiet" id="adminPanelLink">Admin panel</a>
         </p>
         <p class="muted">
-          <a href="./privacy.html" class="link-quiet">Privacy policy</a>
+          <a href="./privacy.html" class="link-quiet" id="privacyPolicyLink">Privacy policy</a>
           · Talk Board <span id="appVersion">v1.0</span>
         </p>
         </div><!-- /settingsTabGeneral -->
@@ -340,6 +362,29 @@
       <div class="recording-actions">
         <button type="button" class="btn-record-stop" id="recordingStopBtn">⏹ Stop</button>
         <button type="button" class="btn-secondary" id="recordingCancelBtn">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- First-run coach -->
+  <div class="coach-overlay" id="coachOverlay" role="dialog" aria-modal="true" aria-labelledby="coachText" hidden>
+    <div class="coach-card">
+      <p class="coach-text" id="coachText"></p>
+      <div class="coach-dots" id="coachDots" aria-hidden="true"></div>
+      <div class="coach-actions">
+        <button type="button" class="btn-secondary" id="coachSkipBtn">Skip tour</button>
+        <button type="button" class="btn-primary" id="coachNextBtn">Next</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- PWA install banner -->
+  <div class="install-banner" id="installBanner" role="region" aria-labelledby="installBannerText" hidden>
+    <div class="install-banner-inner">
+      <p id="installBannerText"></p>
+      <div class="install-banner-actions">
+        <button type="button" class="btn-primary" id="installBannerBtn">Install</button>
+        <button type="button" class="btn-secondary" id="installBannerDismiss">Not now</button>
       </div>
     </div>
   </div>

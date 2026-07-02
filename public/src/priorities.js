@@ -90,3 +90,6 @@ export function isCoreWord(wordId) {
 export const PROMOTE_THRESHOLD = 3; // taps before visual size boost
 export const MAX_TIER = 3;
 export const HOME_MAX_WORDS = 100;
+/** Default home cap for new users until they opt in to show all words. */
+export const HOME_DEFAULT_NEW = 42;
+export const BOARD_PRESET_SIMPLE = 24;

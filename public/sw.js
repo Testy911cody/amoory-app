@@ -1,11 +1,12 @@
 /* Talk Board service worker — makes the app work offline.
    Bump CACHE_VERSION whenever app files change so users get the update. */
-const CACHE_VERSION = "talkboard-v30";
+const CACHE_VERSION = "talkboard-v31";
 const SHELL_URL = "./index.html";
 const SUPABASE_ESM =
   "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/+esm";
 const CORE_ASSETS = [
   SHELL_URL,
+  "./promo.html",
   "./admin.html",
   "./privacy.html",
   "./src/app.js",

@@ -28,13 +28,15 @@ function writeQueue(items) {
   localStorage.setItem(QUEUE_KEY, JSON.stringify(items));
 }
 
-async function pullApprovedFromSupabase() {
+async function pullApprovedFromSupabase(localeCode = null) {
   const supabase = await getSupabase();
   if (!supabase) return [];
-  const { data, error } = await supabase
+  let query = supabase
     .from("community_words")
     .select("id,text,category,emoji,locale,dialect,audio_url,status,source")
     .eq("status", "approved");
+  if (localeCode) query = query.eq("locale", localeCode);
+  const { data, error } = await query;
   if (error) throw error;
   const mapped = (data || []).map(row => ({
     id: row.id,
@@ -49,7 +51,9 @@ async function pullApprovedFromSupabase() {
     audioUrl: row.audio_url || null,
     submittedAt: null
   }));
-  localStorage.setItem(REMOTE_CACHE_KEY, JSON.stringify(mapped));
+  const cacheKey = localeCode ? `${REMOTE_CACHE_KEY}:${localeCode}` : REMOTE_CACHE_KEY;
+  localStorage.setItem(cacheKey, JSON.stringify(mapped));
+  if (localeCode) localStorage.setItem(REMOTE_CACHE_KEY, JSON.stringify(mapped));
   const pending = mapped.filter(row => row.audioUrl);
   if (pending.length) {
     prefetchCommunityAudioBatch(pending, PRIORITY.background).catch(() => {});
@@ -101,14 +105,24 @@ function readRemoteApproved() {
   }
 }
 
-export async function initCommunity() {
+export async function initCommunity(localeCode = null) {
   await openDB();
   if (!SUPABASE_READY || !isOnline()) return;
   try {
-    await pullApprovedFromSupabase();
+    await pullApprovedFromSupabase(localeCode);
     await syncShareQueue();
   } catch (err) {
     console.warn("[Talk Board] Supabase community sync skipped:", err?.message || err);
+  }
+}
+
+/** Re-fetch approved community words for the active UI locale. */
+export async function refreshCommunityForLocale(localeCode) {
+  if (!SUPABASE_READY || !isOnline() || !localeCode) return;
+  try {
+    await pullApprovedFromSupabase(localeCode);
+  } catch (err) {
+    console.warn("[Talk Board] community locale refresh skipped:", err?.message || err);
   }
 }
 

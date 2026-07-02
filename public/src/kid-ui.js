@@ -5,7 +5,7 @@
 import { CATEGORIES, WORDS } from "./data.js";
 import {
   KID_VIEWS, VIEW_CATEGORIES, getWordTier, getPriorityOrder,
-  isCoreWord, PROMOTE_THRESHOLD, HOME_MAX_WORDS
+  isCoreWord, PROMOTE_THRESHOLD, HOME_MAX_WORDS, HOME_DEFAULT_NEW, BOARD_PRESET_SIMPLE
 } from "./priorities.js";
 import {
   getWordStats, getPinnedWords, getCardOrderForView
@@ -119,14 +119,20 @@ export function cardSizeClass(word) {
 /** Words on the Talk (home) tab — up to HOME_MAX_WORDS (100).
    Order: core → pinned → used (by tap count) → unused (category mix).
    Pinned words are always kept; auto-filled tail drops to More when full. */
-export function computeHomeWords(all, pinnedIds) {
+export function resolveHomeMax(settings = {}) {
+  if (settings.boardPreset === "simple24") return BOARD_PRESET_SIMPLE;
+  if (settings.boardPreset === "full" || settings.showAllOnHome) return HOME_MAX_WORDS;
+  return HOME_DEFAULT_NEW;
+}
+
+export function computeHomeWords(all, pinnedIds, maxWords = HOME_MAX_WORDS) {
   const pinned = new Set(pinnedIds);
   const seen = new Set();
   const result = [];
 
   const push = (words) => {
     for (const w of words) {
-      if (result.length >= HOME_MAX_WORDS) return;
+      if (result.length >= maxWords) return;
       if (seen.has(w.id)) continue;
       seen.add(w.id);
       result.push(w);
@@ -143,19 +149,19 @@ export function computeHomeWords(all, pinnedIds) {
   return result;
 }
 
-export function homeWordIdSet(all, pinnedIds) {
-  return new Set(computeHomeWords(all, pinnedIds).map(w => w.id));
+export function homeWordIdSet(all, pinnedIds, maxWords = HOME_MAX_WORDS) {
+  return new Set(computeHomeWords(all, pinnedIds, maxWords).map(w => w.id));
 }
 
 /** Words for the active kid view — full vocabulary, usage-sorted. */
-export function wordsForKidView(viewId, mergeFn, locale, dialect) {
+export function wordsForKidView(viewId, mergeFn, locale, dialect, { homeMax = HOME_MAX_WORDS } = {}) {
   const allFlat = allWordsFlat(mergeFn, locale, dialect);
   const pinnedIds = getPinnedWords();
   const orderKey = boardViewKey(locale, { kidView: viewId });
   const finish = list => applySavedOrder(list, orderKey);
 
   if (viewId === "home") {
-    return finish(computeHomeWords(allFlat, pinnedIds));
+    return finish(computeHomeWords(allFlat, pinnedIds, homeMax));
   }
 
   if (viewId === "need") {
@@ -169,7 +175,7 @@ export function wordsForKidView(viewId, mergeFn, locale, dialect) {
 
   /** More words: full vocabulary minus home. */
   if (viewId === "more") {
-    const homeIds = homeWordIdSet(allFlat, pinnedIds);
+    const homeIds = homeWordIdSet(allFlat, pinnedIds, homeMax);
     return finish(sortByUsage(allFlat.filter(w => !homeIds.has(w.id))));
   }
 
