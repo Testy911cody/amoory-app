@@ -192,6 +192,7 @@ Use tmux for sustained marketing work (landing page polish, ad kit variants, scr
 | **Ad landing page** | `public/promo.html` |
 | **Privacy policy** | `public/privacy.html` |
 | **Ad copy kit (FB/Google/video)** | `docs/MARKETING_AD_KIT.md` |
+| **Sora video prompts (hero + 15s + AR)** | `docs/SORA_PROMO_PROMPTS.md` |
 | **Store listing copy** | `docs/STORE_LISTING.md` |
 | **Brand icon source** | `assets/icon-source.png` |
 
@@ -213,6 +214,10 @@ edit public/promo.html  →  npm run build  →  (HouseGames) npm run sync:amoor
 - **CTA:** "Try free" → `./index.html` (relative) or `/amoory/` in production
 - **Do not invent** fake testimonials, star ratings, or clinical outcome claims
 - Social proof section in `promo.html` is a **placeholder** until real family/therapist quotes exist
+
+### Sora video prompts
+
+For AI-generated promo footage (OpenAI Sora or similar), use **`docs/SORA_PROMO_PROMPTS.md`**: 60s hero, 15s social, scene shot list, negative prompts, aspect-ratio notes, and Arabic variants. Composite real app UI from https://housegames.club/amoory/ when Sora UI is inaccurate.
 
 ### Marketing verify
 

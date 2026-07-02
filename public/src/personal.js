@@ -7,6 +7,7 @@ import {
 import { ttsLangFor } from "./locales.js";
 import { openTalkBoardDB } from "./idb.js";
 import { siblingDialectFor } from "./dialect-fallback.js";
+import { queueFetchBlob, runBatched, PRIORITY } from "./audio-loader.js";
 
 const CUSTOM_KEY = "talkboard_custom_words";
 const META_KEY = "talkboard_personal_meta";
@@ -201,19 +202,47 @@ async function uploadAudio(user, path, blob) {
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 
-async function downloadToCache(key, path) {
+async function downloadToCache(key, path, priority = PRIORITY.normal, { direct = false } = {}) {
+  if (getRecordedKeys().has(key)) {
+    const existing = await getBlobLocal(key);
+    if (existing) return existing;
+  }
   const url = await signedUrl(path);
   if (!url) return null;
   try {
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    const blob = await res.blob();
+    let blob;
+    if (direct) {
+      const res = await fetch(url);
+      if (!res.ok) return null;
+      blob = await res.blob();
+    } else {
+      blob = await queueFetchBlob(`personal:${key}`, url, { priority });
+    }
+    if (!blob) return null;
     await saveBlobLocal(key, blob);
     recordedKeys.add(key);
+    const wordId = key.split("__")[0];
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("talkboard:recording-cached", {
+        detail: { key, wordId }
+      }));
+    }
     return blob;
   } catch {
     return null;
   }
+}
+
+async function downloadPersonalRows(recs, priority = PRIORITY.normal) {
+  let recordings = 0;
+  await runBatched(recs, async (row) => {
+    const key = `${row.word_key}__${row.lang}`;
+    if (getRecordedKeys().has(key)) return null;
+    const blob = await downloadToCache(key, row.audio_path, priority, { direct: true });
+    if (blob) recordings++;
+    return blob;
+  });
+  return recordings;
 }
 
 /** Fetch cloud recordings + custom words for signed-in user. */
@@ -228,14 +257,19 @@ export async function syncFromCloud(user) {
     .select("word_key,lang,audio_path")
     .eq("user_id", user.id);
   if (!recErr && recs?.length) {
-    for (const row of recs) {
-      const key = `${row.word_key}__${row.lang}`;
-      const blob = await downloadToCache(key, row.audio_path);
-      if (blob) recordings++;
-    }
     const meta = readMeta();
     meta.cloudSyncedAt = new Date().toISOString();
     writeMeta(meta);
+    const pending = recs.filter(row => {
+      const key = `${row.word_key}__${row.lang}`;
+      return row.audio_path && !getRecordedKeys().has(key);
+    });
+    if (pending.length) {
+      downloadPersonalRows(pending, PRIORITY.background).then(n => {
+        recordings = n;
+        loadRecordedKeys();
+      }).catch(() => {});
+    }
   }
 
   await loadRecordedKeys();
@@ -253,7 +287,9 @@ export async function syncFromCloud(user) {
       const entry = cloudRowToWord(row);
       if (row.audio_path) {
         const key = recKey(row.word_key, row.locale, row.dialect);
-        await downloadToCache(key, row.audio_path);
+        if (!getRecordedKeys().has(key)) {
+          downloadToCache(key, row.audio_path, PRIORITY.background).catch(() => {});
+        }
       }
       local.push(entry);
       seen.add(row.word_key);
@@ -305,6 +341,28 @@ export function mergePersonalWords(builtinWords, categoryId, locale, dialect) {
   return [...builtinWords, ...custom];
 }
 
+export async function prefetchPersonalRecording(wordId, locale, dialect, priority = PRIORITY.tap) {
+  const key = recKey(wordId, locale, dialect);
+  if (getRecordedKeys().has(key)) return true;
+  const blob = await getBlobLocal(key);
+  if (blob) return true;
+  if (!isOnline() || !SUPABASE_READY) return false;
+  const user = await getCurrentUser();
+  if (!user) return false;
+  const supabase = await getSupabase();
+  if (!supabase) return false;
+  const lang = recordingLangCode(locale, dialect);
+  const { data } = await supabase
+    .from("user_recordings")
+    .select("audio_path")
+    .eq("user_id", user.id)
+    .eq("word_key", wordId)
+    .eq("lang", lang)
+    .maybeSingle();
+  if (!data?.audio_path) return false;
+  return !!(await downloadToCache(key, data.audio_path, priority));
+}
+
 export async function getPersonalRecording(wordId, locale, dialect, { directOnly = false } = {}) {
   const key = recKey(wordId, locale, dialect);
   const blob = await getBlobLocal(key);
@@ -316,6 +374,7 @@ export async function getPersonalRecording(wordId, locale, dialect, { directOnly
 }
 
 export async function savePersonalRecording(wordId, locale, dialect, blob, user, { shareWithCommunity = false } = {}) {
+  if (!user) throw new Error("auth-required");
   const key = recKey(wordId, locale, dialect);
   const lang = recordingLangCode(locale, dialect);
   await saveBlobLocal(key, blob);
@@ -343,6 +402,7 @@ export async function savePersonalRecording(wordId, locale, dialect, blob, user,
 }
 
 export async function deletePersonalRecording(wordId, locale, dialect, user) {
+  if (!user) return;
   const key = recKey(wordId, locale, dialect);
   const lang = recordingLangCode(locale, dialect);
   await deleteBlobLocal(key);
@@ -371,6 +431,7 @@ export async function deletePersonalRecording(wordId, locale, dialect, user) {
 }
 
 export async function addCustomWord({ label, englishHint, emoji, category, locale, dialect, audioBlob }, user) {
+  if (!user) throw new Error("auth-required");
   const wordKey = `uw_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const labels = { [locale]: label };
   if (englishHint) labels.en = englishHint;
@@ -418,6 +479,7 @@ export async function addCustomWord({ label, englishHint, emoji, category, local
 }
 
 export async function deleteCustomWord(wordKey, user) {
+  if (!user) return;
   const local = readCustomWordsLocal();
   const item = local.find(w => w.word_key === wordKey || w.id === wordKey);
   writeCustomWordsLocal(local.filter(w => w.word_key !== wordKey && w.id !== wordKey));

@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "node scripts/inject-config.js && npx serve -l tcp://127.0.0.1:3000 --no-port-switching public",
     "build": "node scripts/build.js",
+    "test": "node scripts/talkboard-test.mjs",
     "icons": "node scripts/generate-icons.js",
     "build:all": "npm run icons && npm run build",
     "assets:android": "npx @capacitor/assets generate --android",

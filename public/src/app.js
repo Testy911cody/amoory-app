@@ -11,32 +11,33 @@ import { initTTS, say, previewVoice, voicesForLocale, unlockAudio } from "./tts.
 import {
   initCommunity, mergeCommunityWords, submitWord, getPendingSubmissions,
   approveSubmission, rejectSubmission, getCommunityAudio, syncShareQueue,
-  fetchOnlinePending, approveOnlineSubmission, rejectOnlineSubmission, checkIsAdmin
+  fetchOnlinePending, checkIsAdmin, prefetchCommunityAudio
 } from "./community.js";
 import {
   SUPABASE_READY, getCurrentUser, signInWithEmail, signInWithPassword,
   signUpWithPassword, signOut, onAuthChange, displayUsername, usesTalkboardAccount,
-  validateUsername, validatePin, ensureDoggyPreload, isOnline
+  validateUsername, validatePin, isOnline, DOGGY_USER_ID
 } from "./supabase.js";
 import {
   initPersonal, mergePersonalWords, getPersonalRecording, savePersonalRecording,
   deletePersonalRecording, loadRecordedKeys, getRecordedKeys, recKey,
   addCustomWord, getAllCustomWords, deleteCustomWord,
-  listPersonalRecordings, syncPersonalQueue
+  listPersonalRecordings, syncPersonalQueue, prefetchPersonalRecording
 } from "./personal.js";
 import {
   loadGlobalRecordings, getGlobalRecording, submitGlobalRecording,
-  fetchPendingGlobalRecordings, approveGlobalRecording, rejectGlobalRecording,
-  syncGlobalQueue
+  fetchPendingGlobalRecordings,
+  syncGlobalQueue, prefetchGlobalRecording
 } from "./global.js";
+import { onSyncProgress, isSlowNetwork, PRIORITY } from "./audio-loader.js";
 import {
-  KID_VIEWS, wordsForKidView, cardSizeClass, labelForKidView, getUnlockedTier,
-  boardViewKey, applySavedOrder
+  KID_VIEWS, wordsForKidView, cardSizeClass, labelForKidView,
+  boardViewKey
 } from "./kid-ui.js";
 import { HOME_MAX_WORDS } from "./priorities.js";
 import {
-  recordWordUse, getUniqueWordCount, setManualTier, resetUsageStats, getUsageStore,
-  setCardOrderForView, pinWord, unpinWord, isWordPinned
+  recordWordUse, getUniqueWordCount, resetUsageStats,
+  setCardOrderForView, pinWord, unpinWord, isWordPinned, bringWordToTop
 } from "./usage.js";
 import { moderateWordEntry, logModerationRejection } from "./moderation.js";
 import { initNativeShell } from "./native.js";
@@ -75,6 +76,16 @@ function playBlob(blob) {
 
 let authUser = null;
 let pendingRecordAfterAuth = null;
+
+function canManagePersonalRecordings() {
+  return !!authUser;
+}
+
+function promptSignInToRecord(word, cardEl) {
+  toast(t("signInToSaveVoice"));
+  pendingRecordAfterAuth = { word, cardEl: cardEl || null };
+  openRecordAuthPanel({ forCommunity: false });
+}
 let pendingCommunityShareAfterAuth = null;
 let mediaRec = null, recChunks = [], recStream = null, recTimer = null, recStart = 0;
 let recordingWord = null, recordingCard = null;
@@ -82,7 +93,7 @@ let recordingWord = null, recordingCard = null;
 /** Hold duration before card body starts re-record (ms). Short tap still speaks. */
 const WORD_LONG_PRESS_MS = 650;
 
-const WORD_PRESS_IGNORE = ".mic,.drag-handle,.pin-home";
+const WORD_PRESS_IGNORE = ".mic,.drag-handle,.pin-home,.bring-top";
 
 function wordPressIgnored(target) {
   return target?.closest?.(WORD_PRESS_IGNORE);
@@ -100,6 +111,10 @@ function attachWordCardLongPress(card, word, onTap) {
     pressTimer = setTimeout(() => {
       pressTimer = null;
       longPressFired = true;
+      if (!canManagePersonalRecordings()) {
+        promptSignInToRecord(word, card);
+        return;
+      }
       card.classList.add("long-press-active");
       navigator.vibrate?.(35);
       toast(t("reRecording"));
@@ -138,15 +153,13 @@ function showRecordingUI(word) {
   const dia = getDialect(settings.locale, state.dialect);
   label.textContent = `${t("recordingFor")} "${text}"`;
   langLbl.textContent = `${t("recordingIn")} ${dia.nativeName || loc.nativeName}`;
-  overlay.hidden = false;
-  overlay.setAttribute("aria-hidden", "false");
+  openPanel(overlay, { focusEl: document.getElementById("recordingStopBtn") });
 }
 
 function hideRecordingUI() {
   const overlay = document.getElementById("recordingOverlay");
   if (!overlay) return;
-  overlay.hidden = true;
-  overlay.setAttribute("aria-hidden", "true");
+  closePanel(overlay);
   const timer = document.getElementById("recordingTimer");
   if (timer) timer.textContent = "0:00";
   clearInterval(recTimer);
@@ -229,8 +242,7 @@ function openRecordAuthPanel({ forCommunity = false } = {}) {
   if (userInput) userInput.placeholder = t("accountUsernamePlaceholder");
   const shareBox = document.getElementById("recordAuthShareCommunity");
   if (shareBox) shareBox.checked = settings.shareWithCommunity !== false;
-  openPanel(panel);
-  userInput?.focus();
+  openPanel(panel, { focusEl: userInput });
 }
 
 async function shareRecordingWithCommunity(word, blob) {
@@ -312,6 +324,10 @@ async function submitCommunityWord(payload) {
 }
 
 async function startRecording(word, cardEl) {
+  if (!canManagePersonalRecordings()) {
+    promptSignInToRecord(word, cardEl);
+    return;
+  }
   if (mediaRec?.state === "recording") { mediaRec.stop(); return; }
   if (!navigator.mediaDevices?.getUserMedia) {
     toast(t("micBlocked") || "This device can't record audio."); return;
@@ -342,7 +358,12 @@ async function startRecording(word, cardEl) {
         await finishRecordingSave(w, blob, card);
       } catch (err) {
         console.warn("savePersonalRecording failed:", err);
-        toast(t("uploadFailed"));
+        if (err?.message === "auth-required") {
+          toast(t("signInToSaveVoice"));
+          promptSignInToRecord(w, card);
+        } else {
+          toast(t("uploadFailed"));
+        }
       }
     }
     mediaRec = null;
@@ -361,10 +382,26 @@ async function startRecording(word, cardEl) {
    2. Approved global / community recording for D
    3. Shared sd↔juba pool (sibling dialect)
    4. Web Speech API TTS of translated native text */
-async function speakWord(word) {
+async function prefetchWordAudio(word, priority = PRIORITY.visible) {
   const locale = settings.locale;
   const dialect = state.dialect;
   const sibling = siblingDialectFor(locale, dialect);
+  await prefetchPersonalRecording(word.id, locale, dialect, priority);
+  await prefetchGlobalRecording(word.id, locale, dialect, priority);
+  if (word.source === "community" && word.communityId) {
+    await prefetchCommunityAudio(word.communityId, priority);
+  }
+  if (sibling) {
+    await prefetchPersonalRecording(word.id, locale, sibling, priority);
+    await prefetchGlobalRecording(word.id, locale, sibling, priority);
+  }
+}
+
+async function playWordAudio(word) {
+  const locale = settings.locale;
+  const dialect = state.dialect;
+  const sibling = siblingDialectFor(locale, dialect);
+  await prefetchWordAudio(word, PRIORITY.tap);
 
   const personalD = await getPersonalRecording(word.id, locale, dialect, { directOnly: true });
   if (personalD) { await playBlob(personalD); return; }
@@ -399,15 +436,30 @@ async function speakWord(word) {
   }
 }
 
-async function speakSentence() {
-  if (!state.sentence.length) return;
-  const parts = state.sentence.map(w => labelForWord(w, settings.locale, state.dialect));
-  const text = parts.join(" ");
-  const lang = ttsLangFor(settings.locale, state.dialect);
+async function speakWord(word, cardEl) {
+  const setLoading = (on) => cardEl?.classList.toggle("loading-audio", on);
+  setLoading(true);
   try {
-    await say(text, lang, { voiceURI: settings.voiceURI });
-  } catch {
-    toast(t("noVoice"));
+    await playWordAudio(word);
+  } finally {
+    setLoading(false);
+  }
+}
+
+let speakingSentence = false;
+
+async function speakSentence() {
+  if (!state.sentence.length || speakingSentence) return;
+  const btn = document.getElementById("speakBtn");
+  speakingSentence = true;
+  btn?.classList.add("loading-audio");
+  try {
+    for (const w of state.sentence) {
+      await playWordAudio(w);
+    }
+  } finally {
+    speakingSentence = false;
+    btn?.classList.remove("loading-audio");
   }
 }
 
@@ -442,7 +494,10 @@ let settingsTab = "general";
 function applyChrome() {
   if (el.title) el.title.textContent = t("title");
   if (el.sayLbl) el.sayLbl.textContent = t("say");
-  el.strip?.setAttribute("data-hint", t("kidHint"));
+  el.strip?.setAttribute(
+    "data-hint",
+    t(canManagePersonalRecordings() ? "kidHintCaregiver" : "kidHintGuest")
+  );
   document.documentElement.lang = settings.locale;
   document.body.setAttribute("dir", effectiveDir(settings.locale, settings.secondaryLocale, settings.bilingual));
   renderLangIndicator();
@@ -452,7 +507,7 @@ function applyChrome() {
   updateBoardSection();
   updateContribFormLabels();
   const settingsBtn = document.getElementById("settingsBtn");
-  if (settingsBtn) settingsBtn.title = t("settings");
+  if (settingsBtn) settingsBtn.title = t("settingsHoldHint");
 }
 
 function updateSettingsPanelLabels() {
@@ -475,8 +530,7 @@ function updateSettingsPanelLabels() {
 function updateBoardSection() {
   const section = document.getElementById("boardSection");
   if (!section) return;
-  const kidBoard = !settings.fullBoard;
-  if (kidBoard && state.kidView === "more") {
+  if (state.kidView === "more") {
     section.hidden = false;
     const title = document.getElementById("boardSectionTitle");
     const hint = document.getElementById("boardSectionHint");
@@ -578,6 +632,73 @@ function setupOfflineIndicator() {
   window.addEventListener("offline", updateOfflineBadge);
 }
 
+let syncBannerDismissed = false;
+let recordingPrefetchObserver = null;
+
+function setupSyncBanner() {
+  let banner = document.getElementById("syncBanner");
+  if (!banner) {
+    banner = document.createElement("div");
+    banner.id = "syncBanner";
+    banner.className = "sync-banner";
+    banner.hidden = true;
+    banner.innerHTML = `<span id="syncBannerText"></span><button type="button" id="syncBannerDismiss" aria-label="${t("syncingVoicesDismiss")}">×</button>`;
+    document.querySelector(".topbar")?.appendChild(banner);
+    document.getElementById("syncBannerDismiss")?.addEventListener("click", () => {
+      syncBannerDismissed = true;
+      banner.hidden = true;
+    });
+  }
+  const textEl = document.getElementById("syncBannerText");
+  onSyncProgress(({ active, done, total }) => {
+    if (!isSlowNetwork() || syncBannerDismissed || !isOnline()) {
+      banner.hidden = true;
+      return;
+    }
+    if (!active || total <= 0 || done >= total) {
+      banner.hidden = true;
+      return;
+    }
+    banner.hidden = false;
+    if (textEl) {
+      textEl.textContent = t("syncingVoices").replace("{done}", String(done)).replace("{total}", String(total));
+    }
+  });
+}
+
+function markWordRecordingCached(wordId) {
+  document.querySelectorAll(`.word[data-word-id="${wordId}"]`).forEach(card => {
+    card.classList.add("has-rec");
+  });
+}
+
+function setupRecordingCachedListener() {
+  window.addEventListener("talkboard:recording-cached", (e) => {
+    const wordId = e.detail?.wordId;
+    if (wordId) markWordRecordingCached(wordId);
+  });
+}
+
+function setupRecordingPrefetch() {
+  recordingPrefetchObserver?.disconnect();
+  const board = el.board;
+  if (!board) return;
+  const homePriority = state.kidView === "home" ? PRIORITY.home : PRIORITY.visible;
+  recordingPrefetchObserver = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue;
+      const wordId = entry.target.dataset.wordId;
+      if (!wordId) continue;
+      const word = wordsForBoard().find(w => w.id === wordId);
+      if (word) prefetchWordAudio(word, homePriority);
+      recordingPrefetchObserver.unobserve(entry.target);
+    }
+  }, { root: null, rootMargin: "100px", threshold: 0.05 });
+  board.querySelectorAll(".word[data-word-id]").forEach(card => {
+    recordingPrefetchObserver.observe(card);
+  });
+}
+
 async function syncWhenOnline() {
   if (!isOnline()) return;
   try {
@@ -616,6 +737,10 @@ function renderAccountBadge(user = authUser) {
     badge.classList.remove("is-guest");
     badge.classList.add("is-clickable");
     badge.hidden = false;
+    el.strip?.setAttribute(
+      "data-hint",
+      t(canManagePersonalRecordings() ? "kidHintCaregiver" : "kidHintGuest")
+    );
     return;
   }
   badge.textContent = t("guestAccount");
@@ -623,6 +748,10 @@ function renderAccountBadge(user = authUser) {
   badge.setAttribute("aria-label", t("guestAccount"));
   badge.classList.add("is-guest", "is-clickable");
   badge.hidden = false;
+  el.strip?.setAttribute(
+    "data-hint",
+    t(canManagePersonalRecordings() ? "kidHintCaregiver" : "kidHintGuest")
+  );
 }
 
 function openAccountSettings() {
@@ -698,22 +827,6 @@ function renderVoiceSelect() {
 
 function renderCats() {
   el.cats.innerHTML = "";
-  if (settings.fullBoard) {
-    CATEGORIES.forEach(c => {
-      const b = document.createElement("button");
-      b.className = "cat";
-      b.setAttribute("aria-selected", c.id === state.category);
-      let name = labelForCategory(c, settings.locale, state.dialect);
-      if (settings.bilingual && settings.secondaryLocale) {
-        const sec = labelForCategory(c, settings.secondaryLocale);
-        if (sec !== name) name = `${name} · ${sec}`;
-      }
-      b.innerHTML = `<span class="dot" style="background:${c.color}"></span>${name}`;
-      b.onclick = () => { state.category = c.id; renderCats(); renderBoard(); };
-      el.cats.appendChild(b);
-    });
-    return;
-  }
   KID_VIEWS.forEach(v => {
     const b = document.createElement("button");
     b.className = "cat kid-cat";
@@ -731,22 +844,10 @@ function mergeAllWords(builtin, catId, locale, dialect) {
 }
 
 function getBoardViewKey() {
-  return boardViewKey(settings.locale, {
-    fullBoard: settings.fullBoard,
-    kidView: state.kidView,
-    category: state.category
-  });
-}
-
-function wordsForCategory(catId) {
-  const list = mergeAllWords(WORDS[catId] || [], catId, settings.locale, state.dialect);
-  return applySavedOrder(list, boardViewKey(settings.locale, { fullBoard: true, category: catId }));
+  return boardViewKey(settings.locale, { kidView: state.kidView });
 }
 
 function wordsForBoard() {
-  if (settings.fullBoard) {
-    return wordsForCategory(state.category);
-  }
   return wordsForKidView(
     state.kidView,
     mergeAllWords,
@@ -881,22 +982,22 @@ function renderBoard() {
   el.board.innerHTML = "";
   const list = wordsForBoard();
   const recordedKeys = getRecordedKeys();
-  const kidMode = !settings.fullBoard;
-  const isHomeView = kidMode && state.kidView === "home";
+  const isHomeView = state.kidView === "home";
   el.board.classList.toggle("board--home", isHomeView);
   const viewKey = getBoardViewKey();
   const defaultColor = KID_VIEWS.find(v => v.id === state.kidView)?.color
-    || CATEGORIES.find(c => c.id === state.category)?.color
     || "var(--accent)";
   const dragLabel = t("dragToReorder");
 
-  list.forEach(w => {
+  list.forEach((w, index) => {
     const key = recKey(w.id, settings.locale, state.dialect);
-    const sizeClass = isHomeView ? "word--home" : (kidMode ? cardSizeClass(w) : "");
+    const sizeClass = isHomeView ? "word--home" : cardSizeClass(w);
     const card = document.createElement("div");
+    const wordLabel = labelForWord(w, settings.locale, state.dialect);
     card.className = `word${sizeClass ? ` ${sizeClass}` : ""}`;
     card.dataset.wordId = w.id;
-    card.setAttribute("role", "button");
+    card.setAttribute("role", "group");
+    card.setAttribute("aria-label", wordLabel);
     card.tabIndex = 0;
     const catColor = CATEGORIES.find(c => c.id === w.categoryId)?.color || defaultColor;
     card.style.borderColor = catColor;
@@ -906,14 +1007,16 @@ function renderBoard() {
     if (w.isCore) card.classList.add("core");
     const pinned = isWordPinned(w.id);
     if (pinned && w.tier !== 0) card.classList.add("home-pinned");
-    card.title = t("holdToReRecord");
+    if (canManagePersonalRecordings()) card.title = t("holdToReRecord");
 
     const badges = [];
     if (recordedKeys.has(key)) badges.push(`<span class="reciic">🎙️</span>`);
     if (w.source === "community") badges.push(`<span class="src-badge" title="${t("sourceCommunity")}">👥</span>`);
     if (w.source === "personal") badges.push(`<span class="src-badge" title="${t("myWords")}">⭐</span>`);
 
-    const micHtml = `<button class="mic" title="${t("recordHint")}">🎤</button>`;
+    const micHtml = canManagePersonalRecordings()
+      ? `<button class="mic" title="${t("recordHint")}">🎤</button>`
+      : "";
     const dragHtml = `<span class="drag-handle" draggable="${!isHomeView}" title="${dragLabel}" aria-label="${dragLabel}">⠿</span>`;
     const showPinBtn = state.kidView === "more";
     const showUnpinBtn = state.kidView === "home" && pinned && w.tier !== 0;
@@ -922,22 +1025,25 @@ function renderBoard() {
       : showUnpinBtn
         ? `<button type="button" class="pin-home is-pinned" title="${t("unpinFromHome")}" aria-label="${t("unpinFromHome")}">★</button>`
         : "";
+    const bringTopHtml = index > 0
+      ? `<button type="button" class="bring-top" title="${t("bringToTop")}" aria-label="${t("bringToTop")}">⬆</button>`
+      : "";
     const labelHtml = isHomeView
       ? `<span class="lbl lbl-min">${labelForWord(w, settings.locale, state.dialect)}</span>`
-      : kidMode && (w.tier === 0 || w.isCore)
+      : (w.tier === 0 || w.isCore)
         ? `<span class="lbl lbl-min">${labelForWord(w, settings.locale, state.dialect)}</span>`
         : wordLabelHtml(w);
 
-    card.innerHTML = dragHtml + micHtml + pinHtml
+    card.innerHTML = dragHtml + micHtml + pinHtml + bringTopHtml
       + `<span class="emoji">${w.emoji}</span>${labelHtml}${badges.join("")}`;
 
     attachWordCardLongPress(card, w, async () => {
       if (card._skipClick) return;
       recordWordUse(w.id);
-      await speakWord(w);
+      await speakWord(w, card);
       state.sentence.push(w);
       renderStrip();
-      if (kidMode && !isHomeView) {
+      if (!isHomeView) {
         card.classList.remove("word--xl", "word--lg", "word--md", "word--sm");
         card.classList.add(cardSizeClass(w));
       }
@@ -979,6 +1085,16 @@ function renderBoard() {
         if (state.kidView === "more" || state.kidView === "home") updateBoardSection();
       });
     }
+    const bringBtn = card.querySelector(".bring-top");
+    if (bringBtn) {
+      bringBtn.addEventListener("pointerdown", (e) => e.stopPropagation());
+      bringBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        bringWordToTop(viewKey, w.id, list.map(item => item.id));
+        toast(t("broughtToTop"));
+        renderBoard();
+      });
+    }
 
     el.board.appendChild(card);
   });
@@ -992,9 +1108,10 @@ function renderBoard() {
   if (!list.length && state.kidView === "more") {
     const msg = document.createElement("p");
     msg.className = "empty-more muted";
-    msg.textContent = settings.fullBoard ? t("noTierMore") : t("moreUnlocking");
+    msg.textContent = t("noTierMore");
     el.board.appendChild(msg);
   }
+  setupRecordingPrefetch();
 }
 
 function renderStrip() {
@@ -1037,14 +1154,14 @@ function updatePendingBadge(count) {
   }
 }
 
-function renderPendingRow(item, { online = false, canModerate = true, globalRec = false } = {}) {
+function renderPendingRow(item, { online = false, globalRec = false } = {}) {
   const row = document.createElement("div");
   row.className = "pending-row";
   const label = globalRec && item.wordId ? labelForWordId(item.wordId) : item.text;
-  const actions = canModerate
+  const actions = (!online && !globalRec)
     ? `<span class="pending-actions">
-        <button type="button" class="btn-approve" data-id="${item.id}" data-online="${online ? "1" : ""}" data-global="${globalRec ? "1" : ""}">${t("approve")}</button>
-        <button type="button" class="btn-reject" data-id="${item.id}" data-online="${online ? "1" : ""}" data-global="${globalRec ? "1" : ""}">${t("reject")}</button>
+        <button type="button" class="btn-approve" data-id="${item.id}">${t("approve")}</button>
+        <button type="button" class="btn-reject" data-id="${item.id}">${t("reject")}</button>
       </span>`
     : `<span class="muted">${t("pendingNote")}</span>`;
   row.innerHTML = `
@@ -1073,7 +1190,7 @@ async function renderPendingQueue() {
   const globalHint = document.getElementById("pendingGlobalHint");
   if (SUPABASE_READY && authUser && el.pendingOnlineList) {
     try {
-      const [{ items, isAdmin }, globalPending] = await Promise.all([
+      const [{ items }, globalPending] = await Promise.all([
         fetchOnlinePending(),
         fetchPendingGlobalRecordings()
       ]);
@@ -1082,25 +1199,21 @@ async function renderPendingQueue() {
       const showOnline = items.length > 0 || globalPending.items.length > 0;
       if (showOnline) {
         onlineSection.hidden = false;
-        onlineHint.textContent = isAdmin ? t("pendingOnlineHint") : t("pendingOnlineOwnHint");
+        onlineHint.textContent = t("pendingOnlineOwnHint");
         el.pendingOnlineList.innerHTML = "";
         if (items.length) {
           items.forEach(item => {
-            el.pendingOnlineList.appendChild(renderPendingRow(item, { online: true, canModerate: isAdmin }));
+            el.pendingOnlineList.appendChild(renderPendingRow(item, { online: true }));
           });
         } else {
           el.pendingOnlineList.innerHTML = `<p class="muted">${t("noPendingWords")}</p>`;
         }
         if (globalList) {
-          globalHint.textContent = isAdmin ? t("pendingGlobalHint") : t("pendingGlobalOwnHint");
+          globalHint.textContent = t("pendingGlobalOwnHint");
           globalList.innerHTML = "";
           if (globalPending.items.length) {
             globalPending.items.forEach(item => {
-              globalList.appendChild(renderPendingRow(item, {
-                online: true,
-                canModerate: globalPending.isAdmin,
-                globalRec: true
-              }));
+              globalList.appendChild(renderPendingRow(item, { online: true, globalRec: true }));
             });
           } else {
             globalList.innerHTML = `<p class="muted">${t("noPendingWords")}</p>`;
@@ -1123,38 +1236,21 @@ async function renderPendingQueue() {
   const bindActions = (root) => {
     root.querySelectorAll(".btn-approve").forEach(btn => {
       btn.onclick = async () => {
-        if (btn.dataset.global) {
-          const res = await approveGlobalRecording(btn.dataset.id);
-          if (!res.ok) { toast(res.reason || t("uploadFailed")); return; }
-          renderBoard();
-        } else if (btn.dataset.online) {
-          const res = await approveOnlineSubmission(btn.dataset.id);
-          if (!res.ok) { toast(res.reason || t("uploadFailed")); return; }
-        } else {
-          approveSubmission(btn.dataset.id);
-          renderBoard();
-        }
+        approveSubmission(btn.dataset.id);
+        renderBoard();
         toast(t("wordApproved"));
         renderPendingQueue();
       };
     });
     root.querySelectorAll(".btn-reject").forEach(btn => {
       btn.onclick = async () => {
-        if (btn.dataset.global) {
-          await rejectGlobalRecording(btn.dataset.id);
-        } else if (btn.dataset.online) {
-          await rejectOnlineSubmission(btn.dataset.id);
-        } else {
-          rejectSubmission(btn.dataset.id);
-        }
+        rejectSubmission(btn.dataset.id);
         toast(t("wordRejected"));
         renderPendingQueue();
       };
     });
   };
   bindActions(el.pendingList);
-  if (el.pendingOnlineList) bindActions(el.pendingOnlineList);
-  if (globalList) bindActions(globalList);
 }
 
 function refreshAll() {
@@ -1173,13 +1269,118 @@ function refreshAll() {
 }
 
 /* ---------------- Settings panel ---------------- */
-function openPanel(panel) {
+const SETTINGS_HOLD_MS = 2000;
+const openModals = new Set();
+let modalFocusReturn = null;
+
+function getFocusableElements(container) {
+  if (!container) return [];
+  return [...container.querySelectorAll(
+    'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+  )].filter(el => !el.closest("[hidden]") && el.offsetParent !== null);
+}
+
+function syncMainInert() {
+  const anyOpen = openModals.size > 0;
+  document.body.querySelectorAll(":scope > *").forEach(child => {
+    const isOpenModal = openModals.has(child.id);
+    if (anyOpen && !isOpenModal) {
+      child.inert = true;
+      if (!child.hasAttribute("data-modal-aria-hidden")) {
+        child.setAttribute("data-modal-aria-hidden", child.getAttribute("aria-hidden") ?? "");
+      }
+      child.setAttribute("aria-hidden", "true");
+    } else {
+      child.inert = false;
+      if (child.hasAttribute("data-modal-aria-hidden")) {
+        const prev = child.getAttribute("data-modal-aria-hidden");
+        if (prev) child.setAttribute("aria-hidden", prev);
+        else child.removeAttribute("aria-hidden");
+        child.removeAttribute("data-modal-aria-hidden");
+      } else if (!isOpenModal && child.hidden) {
+        child.setAttribute("aria-hidden", "true");
+      } else if (!isOpenModal && !child.hidden && child.matches(".panel, .recording-overlay")) {
+        child.setAttribute("aria-hidden", "true");
+      } else if (!isOpenModal && !child.hidden && !child.matches(".panel, .recording-overlay")) {
+        child.removeAttribute("aria-hidden");
+      }
+    }
+  });
+}
+
+function trapPanelFocus(e, panel) {
+  if (e.key !== "Tab") return;
+  const focusable = getFocusableElements(panel);
+  if (!focusable.length) return;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (e.shiftKey && document.activeElement === first) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && document.activeElement === last) {
+    e.preventDefault();
+    first.focus();
+  }
+}
+
+function closeTopModal() {
+  const order = ["recordingOverlay", "recordAuthPanel", "contributePanel", "settingsPanel"];
+  for (const id of order) {
+    if (!openModals.has(id)) continue;
+    if (id === "recordingOverlay") {
+      document.getElementById("recordingCancelBtn")?.click();
+      return;
+    }
+    closePanel(document.getElementById(id));
+    return;
+  }
+}
+
+function openPanel(panel, { focusEl } = {}) {
+  if (!panel || !panel.hidden) return;
+  if (openModals.size === 0) modalFocusReturn = document.activeElement;
   panel.hidden = false;
   panel.setAttribute("aria-hidden", "false");
+  panel.setAttribute("role", "dialog");
+  panel.setAttribute("aria-modal", "true");
+  openModals.add(panel.id);
+  syncMainInert();
+
+  const onKeyDown = (e) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      closeTopModal();
+      return;
+    }
+    trapPanelFocus(e, panel);
+  };
+  panel._modalKeyDown = onKeyDown;
+  panel.addEventListener("keydown", onKeyDown);
+
+  requestAnimationFrame(() => {
+    const target = focusEl || getFocusableElements(panel)[0];
+    if (target) target.focus();
+    else {
+      panel.tabIndex = -1;
+      panel.focus();
+    }
+  });
 }
+
 function closePanel(panel) {
+  if (!panel || panel.hidden) return;
   panel.hidden = true;
   panel.setAttribute("aria-hidden", "true");
+  openModals.delete(panel.id);
+  if (panel._modalKeyDown) {
+    panel.removeEventListener("keydown", panel._modalKeyDown);
+    panel._modalKeyDown = null;
+  }
+  syncMainInert();
+  if (openModals.size === 0 && modalFocusReturn?.focus) {
+    modalFocusReturn.focus();
+    modalFocusReturn = null;
+  }
 }
 
 document.getElementById("settingsClose")?.addEventListener("click", () => closePanel(el.settingsPanel));
@@ -1233,13 +1434,13 @@ el.localeSelect?.addEventListener("change", e => {
   refreshAll();
 });
 
-el.dialectSelect?.addEventListener("change", async e => {
+el.dialectSelect?.addEventListener("change", e => {
   state.dialect = e.target.value;
   settings = saveSettings({ dialect: state.dialect, voiceURI: null });
   renderVoiceSelect();
-  await loadGlobalRecordings(settings.locale, state.dialect);
   renderBoard();
   renderLangIndicator();
+  loadGlobalRecordings(settings.locale, state.dialect).catch(() => {});
 });
 
 el.voiceSelect?.addEventListener("change", e => {
@@ -1269,9 +1470,35 @@ function openSettings() {
 }
 
 function setupSettings() {
-  document.getElementById("settingsBtn")?.addEventListener("click", e => {
+  const settingsBtn = document.getElementById("settingsBtn");
+  if (!settingsBtn) return;
+
+  let holdTimer = null;
+  let holdFired = false;
+
+  settingsBtn.addEventListener("pointerdown", (e) => {
+    if (e.button > 0) return;
+    holdFired = false;
+    holdTimer = setTimeout(() => {
+      holdTimer = null;
+      holdFired = true;
+      navigator.vibrate?.(20);
+      openSettings();
+    }, SETTINGS_HOLD_MS);
+  });
+
+  const cancelHold = () => {
+    if (holdTimer) {
+      clearTimeout(holdTimer);
+      holdTimer = null;
+    }
+  };
+  settingsBtn.addEventListener("pointerup", cancelHold);
+  settingsBtn.addEventListener("pointerleave", cancelHold);
+  settingsBtn.addEventListener("pointercancel", cancelHold);
+  settingsBtn.addEventListener("click", (e) => {
     e.preventDefault();
-    openSettings();
+    if (holdFired) holdFired = false;
   });
 
   document.getElementById("resetUsageBtn")?.addEventListener("click", () => {
@@ -1279,18 +1506,6 @@ function setupSettings() {
     renderUsageStats();
     renderBoard();
     toast(t("usageReset"));
-  });
-  document.getElementById("unlockTierSelect")?.addEventListener("change", e => {
-    const v = e.target.value;
-    setManualTier(v === "" ? null : Number(v));
-    renderBoard();
-    renderUsageStats();
-  });
-  document.getElementById("fullBoardToggle")?.addEventListener("change", e => {
-    settings = saveSettings({ fullBoard: e.target.checked });
-    renderCats();
-    updateBoardSection();
-    renderBoard();
   });
 
   document.querySelectorAll(".settings-tab").forEach(btn => {
@@ -1302,15 +1517,7 @@ function renderUsageStats() {
   const elStats = document.getElementById("usageStats");
   if (!elStats) return;
   const unique = getUniqueWordCount();
-  const tier = getUnlockedTier();
-  elStats.textContent = `${unique} ${t("uniqueWords")} · ${t("tierLabel")} ${tier}`;
-  const sel = document.getElementById("unlockTierSelect");
-  if (sel) {
-    const manual = getUsageStore().manualTier;
-    sel.value = manual == null ? "" : String(manual);
-  }
-  const fullBoardToggle = document.getElementById("fullBoardToggle");
-  if (fullBoardToggle) fullBoardToggle.checked = settings.fullBoard;
+  elStats.textContent = `${unique} ${t("uniqueWords")}`;
 }
 
 function renderSettingsLocaleSelects() {
@@ -1489,6 +1696,7 @@ function setupRecordAuth() {
       showAuthError(errorEl, t("accountConfirmNeeded"));
       return;
     }
+    markManualAuthSession();
     signedInEl.textContent = `${t("signedInAs")} ${displayUsername(authUser)}`;
     signedInEl.hidden = false;
     if (formEl) formEl.hidden = true;
@@ -1601,6 +1809,9 @@ function setupCaregiverAuth() {
       signInForm.hidden = false;
       signedInBox.hidden = true;
       renderAdminLink(false);
+      renderBoard();
+      renderPersonalList();
+      renderCustomWordsList();
     }
   }
 
@@ -1629,6 +1840,7 @@ function setupCaregiverAuth() {
     setAuthLoading(signInBtn, false, t("accountSignIn"));
     setAuthLoading(signUpBtn, false, t("accountSignUp"));
     if (res.ok && res.user && !res.needsConfirm) {
+      markManualAuthSession();
       toast(mode === "signup" ? t("signUpSuccess") : `${t("signedInAs")} ${displayUsername(res.user)}`);
       await reflect(res.user);
       return;
@@ -1676,9 +1888,12 @@ async function renderPersonalList() {
       : rec.wordId;
     const row = document.createElement("div");
     row.className = "pending-row";
+    const deleteHtml = canManagePersonalRecordings()
+      ? `<button type="button" class="btn-reject btn-del-rec" data-id="${rec.wordId}">${t("deleteRecording")}</button>`
+      : "";
     row.innerHTML = `
       <span>🎙️ <strong>${label}</strong> <small>(${rec.lang})</small></span>
-      <button type="button" class="btn-reject btn-del-rec" data-id="${rec.wordId}">${t("deleteRecording")}</button>`;
+      ${deleteHtml}`;
     list.appendChild(row);
   }
   list.querySelectorAll(".btn-del-rec").forEach(btn => {
@@ -1704,9 +1919,12 @@ function renderCustomWordsList() {
   words.forEach(w => {
     const row = document.createElement("div");
     row.className = "pending-row";
+    const deleteHtml = canManagePersonalRecordings()
+      ? `<button type="button" class="btn-reject btn-del-word" data-id="${w.id}">✕</button>`
+      : "";
     row.innerHTML = `
       <span>${w.emoji} <strong>${labelForWord(w, settings.locale, state.dialect)}</strong></span>
-      <button type="button" class="btn-reject btn-del-word" data-id="${w.id}">✕</button>`;
+      ${deleteHtml}`;
     list.appendChild(row);
   });
   list.querySelectorAll(".btn-del-word").forEach(btn => {
@@ -1726,6 +1944,11 @@ function setupCustomWordForm() {
   if (!form) return;
 
   recBtn?.addEventListener("click", async () => {
+    if (!canManagePersonalRecordings()) {
+      toast(t("signInToSaveVoice"));
+      openAccountSettings();
+      return;
+    }
     if (customRec?.state === "recording") { customRec.stop(); return; }
     if (!navigator.mediaDevices?.getUserMedia) return;
     let stream;
@@ -1748,6 +1971,11 @@ function setupCustomWordForm() {
 
   form.addEventListener("submit", async e => {
     e.preventDefault();
+    if (!canManagePersonalRecordings()) {
+      toast(t("signInToSaveVoice"));
+      openAccountSettings();
+      return;
+    }
     const label = document.getElementById("customWordLabel")?.value.trim();
     const hint = document.getElementById("customWordHint")?.value.trim();
     const emoji = document.getElementById("customWordEmoji")?.value.trim();
@@ -1955,25 +2183,28 @@ function ensureBoardRendered() {
   });
 }
 
+const LEGACY_AUTO_DOGGY_CLEARED = "talkboard_legacy_auto_doggy_cleared";
+
+/** Marks an intentional sign-in so legacy auto-doggy cleanup does not sign the user out. */
+function markManualAuthSession() {
+  localStorage.setItem(LEGACY_AUTO_DOGGY_CLEARED, "1");
+}
+
+/** One-time sign-out for sessions left by the old auto doggy preload. */
+async function clearLegacyAutoDoggySession(user) {
+  if (!user || user.id !== DOGGY_USER_ID) return user;
+  if (localStorage.getItem(LEGACY_AUTO_DOGGY_CLEARED)) return user;
+  await signOut();
+  return null;
+}
+
 async function preloadAuthAndData() {
   try {
     await loadRecordedKeys();
-    if (isOnline()) {
-      await loadGlobalRecordings(settings.locale, state.dialect);
-      authUser = await getCurrentUser();
-      if (!authUser && SUPABASE_READY) {
-        const doggy = await Promise.race([
-          ensureDoggyPreload(),
-          new Promise((_, reject) => setTimeout(() => reject(new Error("doggy preload timeout")), 12000))
-        ]).catch(() => null);
-        authUser = doggy || authUser;
-      }
-    } else {
-      authUser = await getCurrentUser();
-      await loadGlobalRecordings(settings.locale, state.dialect);
-    }
+    const globalSync = loadGlobalRecordings(settings.locale, state.dialect);
+    authUser = await clearLegacyAutoDoggySession(await getCurrentUser());
     renderAccountBadge(authUser);
-    const tasks = [initCommunity(), loadRecordedKeys()];
+    const tasks = [globalSync, initCommunity(), loadRecordedKeys()];
     if (authUser && isOnline()) tasks.push(initPersonal(authUser));
     await Promise.allSettled(tasks);
     if (authUser) {
@@ -1986,6 +2217,9 @@ async function preloadAuthAndData() {
       onAuthChange(user => {
         authUser = user || null;
         renderAccountBadge(authUser);
+        renderBoard();
+        renderPersonalList();
+        renderCustomWordsList();
       });
     }
   } catch (err) {
@@ -1997,6 +2231,8 @@ async function preloadAuthAndData() {
   initTTS();
   initNativeShell().catch(() => {});
   setupOfflineIndicator();
+  setupSyncBanner();
+  setupRecordingCachedListener();
   safeBootUI();
   ensureBoardRendered();
   preloadAuthAndData();

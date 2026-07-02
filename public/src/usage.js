@@ -1,7 +1,7 @@
 /* Talk Board — local word usage tracking (offline, privacy-safe)
-   Drives progressive unlock and gentle usage-based card promotion. */
+   Drives usage-based card ordering and gentle visual promotion. */
 
-import { UNLOCK_RULES, getWordTier } from "./priorities.js";
+import { MAX_TIER, getWordTier } from "./priorities.js";
 
 const KEY = "talkboard_usage";
 
@@ -17,8 +17,7 @@ function defaultStore() {
   return {
     words: {},       // { [id]: { count, lastUsed } }
     uniqueCount: 0,
-    firstUsed: null, // ISO date
-    manualTier: null // caregiver override: max tier unlocked (0-3)
+    firstUsed: null // ISO date
   };
 }
 
@@ -62,26 +61,9 @@ export function daysSinceFirstUse() {
   return Math.floor(ms / 86400000);
 }
 
-/** Highest tier the child can see (0–3). */
+/** All vocabulary tiers are always visible. */
 export function getUnlockedTier() {
-  const store = load();
-  if (store.manualTier != null) return store.manualTier;
-
-  let tier = 0;
-  const unique = store.uniqueCount;
-  const days = daysSinceFirstUse();
-
-  if (unique >= UNLOCK_RULES[1].uniqueWords || days >= UNLOCK_RULES[1].daysUsed) tier = 1;
-  if (unique >= UNLOCK_RULES[2].uniqueWords || days >= UNLOCK_RULES[2].daysUsed) tier = 2;
-  if (unique >= UNLOCK_RULES[3].uniqueWords || days >= UNLOCK_RULES[3].daysUsed) tier = 3;
-
-  return tier;
-}
-
-export function setManualTier(tier) {
-  const store = load();
-  store.manualTier = tier == null ? null : Math.max(0, Math.min(3, tier));
-  save(store);
+  return MAX_TIER;
 }
 
 export function resetUsageStats() {
@@ -123,9 +105,9 @@ export function unpinWord(wordId) {
   return ids;
 }
 
-export function isWordVisible(word, unlockedTier) {
+export function isWordVisible(word) {
   const tier = word.tier ?? getWordTier(word.id);
-  return tier <= unlockedTier;
+  return tier <= MAX_TIER;
 }
 
 /** Caregiver custom card order per locale + view (kid tab or category). */
@@ -158,4 +140,12 @@ export function clearCardOrderForView(viewKey) {
   const store = loadOrderStore();
   delete store[viewKey];
   saveOrderStore(store);
+}
+
+/** Move one word to position 1 in the saved order for a view. */
+export function bringWordToTop(viewKey, wordId, currentWordIds) {
+  if (!wordId || !Array.isArray(currentWordIds) || !currentWordIds.length) return;
+  const rest = currentWordIds.filter(id => id && id !== wordId);
+  if (!rest.length) return;
+  setCardOrderForView(viewKey, [wordId, ...rest]);
 }

@@ -87,12 +87,6 @@ export function isCoreWord(wordId) {
   return CORE_WORDS.has(wordId);
 }
 
-/** Milestones for automatic tier unlock (can be overridden by caregiver). */
-export const UNLOCK_RULES = {
-  1: { uniqueWords: 3, daysUsed: 0 },
-  2: { uniqueWords: 8, daysUsed: 2 },
-  3: { uniqueWords: 15, daysUsed: 5 }
-};
-
-export const PROMOTE_THRESHOLD = 5; // taps before visual size boost
+export const PROMOTE_THRESHOLD = 3; // taps before visual size boost
+export const MAX_TIER = 3;
 export const HOME_MAX_WORDS = 100;

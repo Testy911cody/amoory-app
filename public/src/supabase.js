@@ -79,7 +79,7 @@ export function validateUsername(raw) {
   return { ok: true, username };
 }
 
-/** Demo account — always preloaded with cloud recordings on first visit. */
+/** Demo/admin account — manual sign-in only (admin panel, seed scripts). */
 export const DOGGY_USERNAME = "doggy";
 export const DOGGY_USER_ID = "7ee281ce-5ba8-4f2b-bb87-5e4185d12a38";
 
@@ -220,15 +220,6 @@ export async function signUpWithPassword(username, pin) {
 export async function signOut() {
   const supabase = await getSupabase();
   if (supabase) await supabase.auth.signOut();
-}
-
-/** Sign in as the demo doggy account when no session exists (loads cloud recordings). */
-export async function ensureDoggyPreload() {
-  if (!SUPABASE_READY || !isOnline()) return null;
-  const existing = await getCurrentUser();
-  if (existing) return existing;
-  const res = await signInWithPassword(DOGGY_USERNAME, "1234");
-  return res.ok ? res.user : null;
 }
 
 /** Subscribe to auth changes; returns an unsubscribe function. */

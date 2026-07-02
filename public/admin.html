@@ -9,90 +9,221 @@
 <link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-32.png">
 <link rel="stylesheet" href="./src/styles.css">
 <style>
-  .admin-wrap { max-width: 720px; margin: 0 auto; padding: 16px; }
-  .admin-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
-  .admin-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
-  .admin-tab { padding: 8px 14px; border-radius: 999px; border: 1px solid var(--border, #ccc); background: #fff; cursor: pointer; }
-  .admin-tab.active { background: var(--accent, #2E8C8C); color: #fff; border-color: transparent; }
-  .admin-tab.has-pending { font-weight: 800; }
-  .admin-tab.has-pending:not(.active) { border-color: var(--accent, #2E8C8C); color: var(--accent, #2E8C8C); }
-  .admin-section { margin-bottom: 24px; }
-  .admin-badge { font-size: 0.75rem; padding: 2px 8px; border-radius: 999px; background: #f0f4f4; color: #555; }
+  :root { --admin-sidebar: 220px; --admin-accent: #2E8C8C; }
+  body { background: #f4f7f7; margin: 0; }
+  .admin-shell { display: flex; min-height: 100vh; }
+  .admin-sidebar {
+    width: var(--admin-sidebar);
+    flex-shrink: 0;
+    background: #1a3d3d;
+    color: #e8f4f4;
+    padding: 16px 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .admin-brand { padding: 0 16px 16px; border-bottom: 1px solid rgba(255,255,255,.12); margin-bottom: 8px; }
+  .admin-brand h1 { margin: 0; font-size: 1rem; font-weight: 700; }
+  .admin-brand p { margin: 4px 0 0; font-size: 0.75rem; opacity: .75; }
+  .admin-nav { flex: 1; overflow-y: auto; }
+  .admin-nav-btn {
+    display: flex; align-items: center; gap: 8px; width: 100%;
+    padding: 10px 16px; border: none; background: transparent; color: inherit;
+    text-align: left; cursor: pointer; font-size: 0.875rem;
+  }
+  .admin-nav-btn:hover { background: rgba(255,255,255,.08); }
+  .admin-nav-btn.active { background: var(--admin-accent); font-weight: 600; }
+  .admin-nav-btn .count {
+    margin-left: auto; font-size: 0.7rem; background: rgba(255,255,255,.2);
+    padding: 1px 7px; border-radius: 999px;
+  }
+  .admin-sidebar-foot { padding: 12px 16px; border-top: 1px solid rgba(255,255,255,.12); font-size: 0.8rem; }
+  .admin-sidebar-foot a { color: #a8d8d8; }
+  .admin-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .admin-topbar {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 12px 20px; background: #fff; border-bottom: 1px solid #dde5e5;
+  }
+  .admin-topbar h2 { margin: 0; font-size: 1.1rem; }
+  .admin-content { padding: 20px; flex: 1; overflow-y: auto; }
+  .admin-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; margin-bottom: 20px; }
+  .admin-stat {
+    background: #fff; border-radius: 12px; padding: 16px; border: 1px solid #dde5e5;
+    text-align: center;
+  }
+  .admin-stat .num { font-size: 1.75rem; font-weight: 800; color: var(--admin-accent); }
+  .admin-stat .lbl { font-size: 0.75rem; color: #666; margin-top: 4px; }
+  .admin-card {
+    background: #fff; border-radius: 12px; border: 1px solid #dde5e5;
+    padding: 16px; margin-bottom: 16px;
+  }
+  .admin-card h3 { margin: 0 0 8px; font-size: 1rem; }
+  .admin-toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 12px; }
+  .admin-toolbar select, .admin-toolbar input {
+    padding: 6px 10px; border-radius: 8px; border: 1px solid #ccc; font-size: 0.875rem;
+  }
+  .admin-table-wrap { overflow-x: auto; }
+  .admin-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+  .admin-table th, .admin-table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #eee; }
+  .admin-table th { font-weight: 600; color: #444; background: #fafafa; }
+  .admin-badge { font-size: 0.7rem; padding: 2px 8px; border-radius: 999px; background: #f0f4f4; color: #555; white-space: nowrap; }
+  .admin-badge.pending { background: #fff3cd; color: #856404; }
+  .admin-badge.approved { background: #d4edda; color: #155724; }
+  .admin-badge.rejected { background: #f8d7da; color: #721c24; }
   .admin-badge.fallback { background: #fff3cd; color: #856404; }
-  .admin-badge.legacy { background: #fff3cd; color: #856404; }
   .admin-badge.native { background: #d4edda; color: #155724; }
   .admin-badge.shared { background: #d1ecf1; color: #0c5460; }
-  .admin-filter { margin-bottom: 12px; }
-  .admin-denied { padding: 24px; text-align: center; }
+  .admin-badge.admin-user { background: #cce5ff; color: #004085; }
+  .admin-denied, .admin-auth-gate { max-width: 420px; margin: 40px auto; padding: 24px; background: #fff; border-radius: 12px; border: 1px solid #dde5e5; }
+  .admin-section-panel[hidden] { display: none !important; }
+  .pending-row { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: flex-start; padding: 12px 0; border-bottom: 1px solid #eee; }
+  .pending-actions { display: flex; gap: 8px; flex-shrink: 0; }
+  .admin-toggle { cursor: pointer; }
+  .admin-words-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; max-height: 480px; overflow-y: auto; }
+  .admin-word-chip {
+    display: flex; align-items: center; gap: 6px; padding: 6px 10px;
+    border-radius: 8px; border: 1px solid #eee; font-size: 0.8rem; background: #fafafa;
+  }
+  .admin-word-chip.missing-sd { border-color: #f5c6cb; }
+  .admin-word-chip.missing-juba { border-color: #ffeeba; }
+  .admin-word-chip.has-both { border-color: #c3e6cb; }
+  .admin-mobile-nav { display: none; }
+  @media (max-width: 768px) {
+    .admin-shell { flex-direction: column; }
+    .admin-sidebar { width: 100%; flex-direction: row; flex-wrap: wrap; padding: 8px; }
+    .admin-brand { border: none; padding: 8px; margin: 0; flex: 1; }
+    .admin-nav { display: none; }
+    .admin-sidebar-foot { display: none; }
+    .admin-mobile-nav {
+      display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 12px;
+      background: #fff; border-bottom: 1px solid #dde5e5;
+    }
+    .admin-mobile-nav button {
+      padding: 6px 12px; border-radius: 999px; border: 1px solid #ccc;
+      background: #fff; font-size: 0.75rem; cursor: pointer;
+    }
+    .admin-mobile-nav button.active { background: var(--admin-accent); color: #fff; border-color: transparent; }
+  }
 </style>
 </head>
 <body>
-  <div class="admin-wrap">
-    <header class="admin-head">
-      <div>
-        <h1 style="margin:0;font-size:1.25rem">Talk Board Admin</h1>
-        <p class="muted" style="margin:4px 0 0">Approvals, dialects &amp; recordings</p>
-      </div>
-      <a href="./index.html" class="btn-secondary">← Board</a>
-    </header>
-
-    <div id="adminAuth" class="auth-panel contrib-auth">
-      <p class="muted" id="adminAuthStatus">Sign in with an admin account.</p>
-      <p class="auth-error" id="adminAuthError" hidden role="alert"></p>
-      <form id="adminSignInForm" class="auth-form">
-        <label class="field">
-          <span>Username</span>
-          <input type="text" id="adminUsername" autocomplete="username" minlength="3" pattern="[a-zA-Z0-9_]+" autocapitalize="off">
-        </label>
-        <label class="field">
-          <span>PIN</span>
-          <input type="password" id="adminPassword" inputmode="numeric" maxlength="4" autocomplete="off">
-        </label>
-        <button type="submit" class="btn-primary">Sign in</button>
-      </form>
-      <div id="adminSignedIn" hidden>
-        <p class="auth-status ok" id="adminSignedInAs"></p>
-        <button type="button" class="btn-secondary" id="adminSignOutBtn">Sign out</button>
-      </div>
+  <div id="adminGate" class="admin-auth-gate">
+    <h1 style="margin:0 0 8px;font-size:1.25rem">Talk Board Admin</h1>
+    <p class="muted" id="adminAuthStatus">Sign in with an admin account.</p>
+    <p class="auth-error" id="adminAuthError" hidden role="alert"></p>
+    <form id="adminSignInForm" class="auth-form">
+      <label class="field">
+        <span>Username</span>
+        <input type="text" id="adminUsername" autocomplete="username" minlength="3" pattern="[a-zA-Z0-9_]+" autocapitalize="off">
+      </label>
+      <label class="field">
+        <span>PIN</span>
+        <input type="password" id="adminPassword" inputmode="numeric" maxlength="4" autocomplete="off">
+      </label>
+      <button type="submit" class="btn-primary">Sign in</button>
+    </form>
+    <div id="adminSignedIn" hidden>
+      <p class="auth-status ok" id="adminSignedInAs"></p>
+      <button type="button" class="btn-secondary" id="adminSignOutBtn">Sign out</button>
     </div>
+    <p style="margin-top:16px"><a href="./index.html" class="link-quiet">← Back to Talk Board</a></p>
+  </div>
 
-    <div id="adminDenied" class="admin-denied" hidden>
-      <p>This account is not an admin. Ask a project owner to set <code>profiles.is_admin = true</code>.</p>
-      <a href="./index.html" class="btn-secondary">Back to Talk Board</a>
-    </div>
+  <div id="adminDenied" class="admin-denied" hidden>
+    <h2 style="margin:0 0 8px">Access denied</h2>
+    <p>This account is not an admin. Ask a project owner to set <code>profiles.is_admin = true</code>.</p>
+    <a href="./index.html" class="btn-secondary" style="display:inline-block;margin-top:12px">Back to Talk Board</a>
+  </div>
 
-    <div id="adminMain" hidden>
-      <nav class="admin-tabs" aria-label="Admin sections">
-        <button type="button" class="admin-tab active" data-tab="pending-global">Pending recordings</button>
-        <button type="button" class="admin-tab" data-tab="pending-community">Pending words</button>
-        <button type="button" class="admin-tab" data-tab="sd-recordings">Sudanese / Juba audio</button>
+  <div id="adminShell" class="admin-shell" hidden>
+    <aside class="admin-sidebar">
+      <div class="admin-brand">
+        <h1>Talk Board</h1>
+        <p>Admin console</p>
+      </div>
+      <nav class="admin-nav" aria-label="Admin sections">
+        <button type="button" class="admin-nav-btn active" data-tab="dashboard">Dashboard</button>
+        <button type="button" class="admin-nav-btn" data-tab="moderation">Moderation queue <span class="count" id="navModCount" hidden>0</span></button>
+        <button type="button" class="admin-nav-btn" data-tab="users">Users</button>
+        <button type="button" class="admin-nav-btn" data-tab="community">Community words</button>
+        <button type="button" class="admin-nav-btn" data-tab="global">Global recordings</button>
+        <button type="button" class="admin-nav-btn" data-tab="user-rec">User recordings</button>
+        <button type="button" class="admin-nav-btn" data-tab="words">Words overview</button>
       </nav>
+      <div class="admin-sidebar-foot">
+        <p id="adminSidebarUser" class="muted" style="margin:0 0 8px"></p>
+        <button type="button" class="btn-secondary" id="adminShellSignOut" style="width:100%;margin-bottom:8px">Sign out</button>
+        <a href="./index.html">← Board</a>
+      </div>
+    </aside>
 
-      <section class="admin-section" id="tab-pending-global">
-        <h2>Pending global recordings</h2>
-        <p class="muted">Voice clips waiting to become the baseline for a locale/dialect. Approve or reject each clip — sd and juba share a pool until a dialect-specific version is approved.</p>
-        <div id="pendingGlobalAdmin"></div>
-      </section>
+    <div class="admin-main">
+      <div class="admin-mobile-nav" id="adminMobileNav" aria-label="Admin sections mobile"></div>
+      <header class="admin-topbar">
+        <h2 id="adminPageTitle">Dashboard</h2>
+        <button type="button" class="btn-secondary" id="adminRefreshBtn">Refresh</button>
+      </header>
+      <div class="admin-content" id="adminContent">
 
-      <section class="admin-section" id="tab-pending-community" hidden>
-        <h2>Pending community words</h2>
-        <p class="muted">Shared words awaiting moderator approval. Check dialect badge before approving — Arabic sd/juba entries may serve both dialects until overridden.</p>
-        <div id="pendingCommunityAdmin"></div>
-      </section>
+        <section class="admin-section-panel" id="panel-dashboard" data-title="Dashboard">
+          <div class="admin-stats" id="dashboardStats"></div>
+          <div class="admin-card">
+            <h3>Quick actions</h3>
+            <p class="muted">Use the sidebar to review pending submissions, manage users, and inspect recordings.</p>
+            <button type="button" class="btn-primary" data-goto="moderation">Open moderation queue</button>
+          </div>
+        </section>
 
-      <section class="admin-section" id="tab-sd-recordings" hidden>
-        <h2>Arabic Sudanese &amp; Juba recordings</h2>
-        <p class="muted">Dialect-specific clips apply only when that dialect is selected. Until approved, sd and juba share the same pool.</p>
-        <label class="field admin-filter">
-          <span>Dialect filter</span>
-          <select id="overviewDialect">
-            <option value="sd" selected>Sudanese (sd)</option>
-            <option value="juba">Juba Arabic (juba)</option>
-            <option value="">All Arabic</option>
-          </select>
-        </label>
-        <div id="sdOverviewList"></div>
-      </section>
+        <section class="admin-section-panel" id="panel-moderation" data-title="Moderation queue" hidden>
+          <p class="muted">All pending community words and global recordings in one place.</p>
+          <div id="moderationQueue"></div>
+        </section>
+
+        <section class="admin-section-panel" id="panel-users" data-title="Users" hidden>
+          <div class="admin-toolbar">
+            <input type="search" id="userSearch" placeholder="Search username or email…" aria-label="Search users">
+          </div>
+          <div class="admin-table-wrap">
+            <table class="admin-table" id="usersTable">
+              <thead>
+                <tr><th>User</th><th>Admin</th><th>Created</th><th>Last sign-in</th></tr>
+              </thead>
+              <tbody id="usersTableBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="admin-section-panel" id="panel-community" data-title="Community words" hidden>
+          <div class="admin-toolbar">
+            <label>Status <select id="communityStatusFilter"><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="all">All</option></select></label>
+            <label>Dialect <select id="communityDialectFilter"><option value="">All</option><option value="sd">Sudanese</option><option value="juba">Juba</option></select></label>
+          </div>
+          <div id="communityWordsList"></div>
+        </section>
+
+        <section class="admin-section-panel" id="panel-global" data-title="Global recordings" hidden>
+          <div class="admin-toolbar">
+            <label>Status <select id="globalStatusFilter"><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="all">All</option></select></label>
+            <label>Locale <select id="globalLocaleFilter"><option value="">All</option><option value="ar" selected>Arabic</option><option value="en">English</option></select></label>
+            <label>Dialect <select id="globalDialectFilter"><option value="">All</option><option value="sd">Sudanese</option><option value="juba">Juba</option></select></label>
+          </div>
+          <div id="globalRecordingsList"></div>
+        </section>
+
+        <section class="admin-section-panel" id="panel-user-rec" data-title="User recordings" hidden>
+          <p class="muted">Personal caregiver recordings (private bucket). Playback uses short-lived signed URLs.</p>
+          <div id="userRecordingsList"></div>
+          <button type="button" class="btn-secondary" id="userRecLoadMore" hidden>Load more</button>
+        </section>
+
+        <section class="admin-section-panel" id="panel-words" data-title="Words overview" hidden>
+          <p class="muted">Built-in vocabulary and global recording coverage per dialect (sd / juba).</p>
+          <div class="admin-toolbar">
+            <label>Filter <select id="wordsCoverageFilter"><option value="all">All words</option><option value="missing-sd">Missing Sudanese</option><option value="missing-juba">Missing Juba</option><option value="missing-both">Missing both</option></select></label>
+          </div>
+          <div class="admin-words-grid" id="wordsOverviewGrid"></div>
+        </section>
+
+      </div>
     </div>
   </div>
 

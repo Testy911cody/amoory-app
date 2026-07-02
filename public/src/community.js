@@ -5,6 +5,7 @@ import { getSupabase, SUPABASE_READY, AUDIO_BUCKET, getCurrentUser, isOnline } f
 import { openTalkBoardDB } from "./idb.js";
 import { moderateForCommunity, logModerationRejection } from "./moderation.js";
 import { siblingDialectFor } from "./dialect-fallback.js";
+import { queueFetchBlob, runBatched, PRIORITY } from "./audio-loader.js";
 
 const QUEUE_KEY = "talkboard_community_queue";
 const REMOTE_CACHE_KEY = "talkboard_community_remote";
@@ -49,20 +50,46 @@ async function pullApprovedFromSupabase() {
     submittedAt: null
   }));
   localStorage.setItem(REMOTE_CACHE_KEY, JSON.stringify(mapped));
-  for (const row of mapped) {
-    if (row.audioUrl) await cacheCommunityAudioFromUrl(row.id, row.audioUrl);
+  const pending = mapped.filter(row => row.audioUrl);
+  if (pending.length) {
+    prefetchCommunityAudioBatch(pending, PRIORITY.background).catch(() => {});
   }
   return mapped;
 }
 
-async function cacheCommunityAudioFromUrl(id, audioUrl) {
+async function prefetchCommunityAudioBatch(rows, priority = PRIORITY.normal) {
+  await runBatched(rows, async (row) => {
+    if (!row.audioUrl) return null;
+    const key = audioKey(row.id);
+    const database = await openDB();
+    const cached = await new Promise(res => {
+      const tx = database.transaction("community_audio", "readonly");
+      const rq = tx.objectStore("community_audio").get(key);
+      rq.onsuccess = () => res(rq.result || null);
+      rq.onerror = () => res(null);
+    });
+    if (cached) return cached;
+    return cacheCommunityAudioFromUrl(row.id, row.audioUrl, priority, { direct: true });
+  });
+}
+
+async function cacheCommunityAudioFromUrl(id, audioUrl, priority = PRIORITY.normal, { direct = false } = {}) {
   if (!audioUrl || !isOnline()) return;
   try {
-    const res = await fetch(audioUrl);
-    if (!res.ok) return;
-    const blob = await res.blob();
+    let blob;
+    if (direct) {
+      const res = await fetch(audioUrl);
+      if (!res.ok) return null;
+      blob = await res.blob();
+    } else {
+      blob = await queueFetchBlob(`community:${id}`, audioUrl, { priority });
+    }
+    if (!blob) return null;
     await saveCommunityAudio(id, blob);
-  } catch { /* optional */ }
+    return blob;
+  } catch {
+    return null;
+  }
 }
 
 function readRemoteApproved() {
@@ -151,15 +178,25 @@ export async function getCommunityAudio(id) {
   const remote = readRemoteApproved().find(w => w.id === id);
   if (remote?.audioUrl && isOnline()) {
     try {
-      const res = await fetch(remote.audioUrl);
-      if (res.ok) {
-        const blob = await res.blob();
-        await saveCommunityAudio(id, blob);
-        return blob;
-      }
+      const blob = await cacheCommunityAudioFromUrl(id, remote.audioUrl, PRIORITY.tap);
+      if (blob) return blob;
     } catch { /* fall through */ }
   }
   return null;
+}
+
+export async function prefetchCommunityAudio(id, priority = PRIORITY.visible) {
+  const database = await openDB();
+  const cached = await new Promise(res => {
+    const tx = database.transaction("community_audio", "readonly");
+    const rq = tx.objectStore("community_audio").get(audioKey(id));
+    rq.onsuccess = () => res(rq.result || null);
+    rq.onerror = () => res(null);
+  });
+  if (cached) return true;
+  const remote = readRemoteApproved().find(w => w.id === id);
+  if (!remote?.audioUrl) return false;
+  return !!(await cacheCommunityAudioFromUrl(id, remote.audioUrl, priority));
 }
 
 /** Submit a new community word (starts as pending).

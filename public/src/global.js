@@ -8,6 +8,9 @@ import { recKey, recordingLangCode, getRecordedKeys, loadRecordedKeys } from "./
 import { openTalkBoardDB } from "./idb.js";
 import { checkIsAdmin } from "./community.js";
 import { dialectsToLoad, siblingDialectFor } from "./dialect-fallback.js";
+import {
+  queueFetchBlob, runBatched, PRIORITY, isSlowNetwork
+} from "./audio-loader.js";
 
 const REMOTE_CACHE_KEY = "talkboard_global_remote";
 const GLOBAL_SYNC_KEY = "talkboard_global_sync_queue";
@@ -57,19 +60,57 @@ async function saveBlobLocal(key, blob) {
   });
 }
 
-async function fetchBlobToCache(key, audioUrl) {
+function notifyRecordingCached(key, wordId) {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent("talkboard:recording-cached", {
+    detail: { key, wordId }
+  }));
+}
+
+async function fetchBlobToCache(key, audioUrl, priority = PRIORITY.normal, { direct = false } = {}) {
   if (!audioUrl) return null;
   if (!isOnline()) return null;
+  if (getRecordedKeys().has(key)) {
+    const db = await openTalkBoardDB();
+    const cached = await new Promise(res => {
+      const tx = db.transaction("recordings", "readonly");
+      const rq = tx.objectStore("recordings").get(key);
+      rq.onsuccess = () => res(rq.result || null);
+      rq.onerror = () => res(null);
+    });
+    if (cached) return cached;
+  }
   try {
-    const res = await fetch(audioUrl);
-    if (!res.ok) return null;
-    const blob = await res.blob();
+    let blob;
+    if (direct) {
+      const res = await fetch(audioUrl);
+      if (!res.ok) return null;
+      blob = await res.blob();
+    } else {
+      blob = await queueFetchBlob(`global:${key}`, audioUrl, { priority });
+    }
+    if (!blob) return null;
     await saveBlobLocal(key, blob);
     getRecordedKeys().add(key);
+    const wordId = key.split("__")[0];
+    notifyRecordingCached(key, wordId);
     return blob;
   } catch {
     return null;
   }
+}
+
+async function downloadGlobalRows(rows, priority = PRIORITY.normal) {
+  let loaded = 0;
+  await runBatched(rows, async (row) => {
+    const key = recKey(row.word_key, row.locale, row.dialect);
+    if (getRecordedKeys().has(key)) return null;
+    const blob = await fetchBlobToCache(key, row.audio_url, priority, { direct: true });
+    if (blob) loaded++;
+    return blob;
+  });
+  await loadRecordedKeys();
+  return loaded;
 }
 
 function mergeRemoteApproved(locale, dialects, newRows) {
@@ -119,18 +160,24 @@ export async function loadGlobalRecordings(locale, dialect) {
 
   const rows = data || [];
   mergeRemoteApproved(locale, dialects, rows);
-
-  let loaded = 0;
-  for (const row of rows) {
-    const key = recKey(row.word_key, row.locale, row.dialect);
-    const blob = await fetchBlobToCache(key, row.audio_url);
-    if (blob) loaded++;
-  }
   await loadRecordedKeys();
-  return { loaded };
+
+  const pending = rows.filter(row => {
+    const key = recKey(row.word_key, row.locale, row.dialect);
+    return row.audio_url && !getRecordedKeys().has(key);
+  });
+
+  if (!pending.length) return { loaded: rows.length, fromCache: true };
+
+  const priority = isSlowNetwork() ? PRIORITY.home : PRIORITY.background;
+  downloadGlobalRows(pending, priority).catch(err => {
+    console.warn("[Talk Board] global audio prefetch:", err?.message || err);
+  });
+
+  return { queued: pending.length, metadata: rows.length };
 }
 
-async function getGlobalRecordingDirect(wordId, locale, dialect) {
+async function getGlobalRecordingDirect(wordId, locale, dialect, priority = PRIORITY.tap) {
   const key = recKey(wordId, locale, dialect);
   const db = await openTalkBoardDB();
   const local = await new Promise(res => {
@@ -147,9 +194,20 @@ async function getGlobalRecordingDirect(wordId, locale, dialect) {
     (r.dialect === dialect || (!r.dialect && !dialect))
   );
   if (remote?.audio_url && isOnline()) {
-    return fetchBlobToCache(key, remote.audio_url);
+    return fetchBlobToCache(key, remote.audio_url, PRIORITY.tap);
   }
   return null;
+}
+
+/** Prefetch a single global recording (visible card / home priority). */
+export async function prefetchGlobalRecording(wordId, locale, dialect, priority = PRIORITY.visible) {
+  const key = recKey(wordId, locale, dialect);
+  if (getRecordedKeys().has(key)) return true;
+  const blob = await getGlobalRecordingDirect(wordId, locale, dialect, priority);
+  if (blob) return true;
+  const sibling = siblingDialectFor(locale, dialect);
+  if (!sibling) return false;
+  return !!(await getGlobalRecordingDirect(wordId, locale, sibling, priority));
 }
 
 /** Approved global baseline for a locale/dialect (optional sibling shared pool). */
