@@ -149,3 +149,26 @@ export function bringWordToTop(viewKey, wordId, currentWordIds) {
   if (!rest.length) return;
   setCardOrderForView(viewKey, [wordId, ...rest]);
 }
+
+/** Therapist handoff: pins + per-view card order as JSON. */
+export function exportBoardLayout() {
+  return {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    pinned: getPinnedWords(),
+    cardOrder: loadOrderStore()
+  };
+}
+
+export function importBoardLayout(data) {
+  if (!data || typeof data !== "object") return { ok: false, error: "invalid" };
+  if (Array.isArray(data.pinned)) setPinnedWords(data.pinned);
+  if (data.cardOrder && typeof data.cardOrder === "object") {
+    const store = loadOrderStore();
+    for (const [viewKey, ids] of Object.entries(data.cardOrder)) {
+      if (Array.isArray(ids)) store[viewKey] = ids.filter(Boolean);
+    }
+    saveOrderStore(store);
+  }
+  return { ok: true };
+}

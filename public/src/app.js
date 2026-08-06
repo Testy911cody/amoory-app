@@ -7,7 +7,7 @@ import {
   LOCALES, loadSettings, saveSettings, getLocale, getDialect,
   uiString, ttsLangFor, effectiveDir
 } from "./locales.js";
-import { initTTS, say, previewVoice, voicesForLocale, unlockAudio } from "./tts.js";
+import { initTTS, say, previewVoice, voicesForLocale, unlockAudio, stopSpeaking } from "./tts.js";
 import {
   initCommunity, mergeCommunityWords, submitWord, getPendingSubmissions,
   approveSubmission, rejectSubmission, getCommunityAudio, syncShareQueue,
@@ -37,11 +37,20 @@ import {
 import { HOME_MAX_WORDS } from "./priorities.js";
 import {
   recordWordUse, getUniqueWordCount, resetUsageStats,
-  setCardOrderForView, pinWord, unpinWord, isWordPinned, bringWordToTop
+  setCardOrderForView, pinWord, unpinWord, isWordPinned, bringWordToTop,
+  exportBoardLayout, importBoardLayout
 } from "./usage.js";
 import { moderateWordEntry, logModerationRejection } from "./moderation.js";
 import { initNativeShell } from "./native.js";
 import { siblingDialectFor } from "./dialect-fallback.js";
+import {
+  initRecording, attachWordCardLongPress, startRecording,
+  bindRecordingOverlayButtons, persistShareWithCommunity, wordPressIgnored
+} from "./features/recording.js";
+import {
+  initAuthUi, openRecordAuthPanel, setupRecordAuth, setupCaregiverAuth
+} from "./features/auth-ui.js";
+import { evictAudioCachesIfNeeded } from "./idb-evict.js";
 
 /* ---------------- Toast ---------------- */
 function toast(msg) {
@@ -79,18 +88,53 @@ function labelForWordId(wordId) {
 }
 
 /* ---------------- Audio helpers ---------------- */
+let currentAudio = null;
+let speakGeneration = 0;
+let speakingSentence = false;
+
+function stopAllAudio() {
+  speakGeneration++;
+  stopSpeaking();
+  if (currentAudio) {
+    try { currentAudio.pause(); } catch {}
+    try { currentAudio.src = ""; } catch {}
+    currentAudio = null;
+  }
+  document.getElementById("speakBtn")?.classList.remove("loading-audio", "speaking");
+  document.querySelectorAll("#strip .chip.speaking").forEach(c => c.classList.remove("speaking"));
+  speakingSentence = false;
+}
+
 function playBlob(blob) {
   return new Promise(res => {
+    const gen = speakGeneration;
     const url = URL.createObjectURL(blob);
     const a = new Audio(url);
-    a.onended = () => { URL.revokeObjectURL(url); res(); };
-    a.onerror = () => res();
-    a.play().catch(() => res());
+    currentAudio = a;
+    const done = () => {
+      if (currentAudio === a) currentAudio = null;
+      URL.revokeObjectURL(url);
+      res();
+    };
+    a.onended = done;
+    a.onerror = done;
+    a.play().catch(done);
+    // If cancelled mid-play, resolve so sentence loop can exit
+    const poll = setInterval(() => {
+      if (gen !== speakGeneration) {
+        clearInterval(poll);
+        try { a.pause(); } catch {}
+        done();
+      }
+    }, 80);
+    a.onended = () => { clearInterval(poll); done(); };
+    a.onerror = () => { clearInterval(poll); done(); };
   });
 }
 
 let authUser = null;
 let pendingRecordAfterAuth = null;
+let pendingCommunityShareAfterAuth = null;
 
 function canManagePersonalRecordings() {
   return !!authUser;
@@ -100,164 +144,6 @@ function promptSignInToRecord(word, cardEl) {
   toast(t("signInToSaveVoice"));
   pendingRecordAfterAuth = { word, cardEl: cardEl || null };
   openRecordAuthPanel({ forCommunity: false });
-}
-let pendingCommunityShareAfterAuth = null;
-let mediaRec = null, recChunks = [], recStream = null, recTimer = null, recStart = 0;
-let recordingWord = null, recordingCard = null;
-
-/** Hold duration before card body starts re-record (ms). Short tap still speaks. */
-const WORD_LONG_PRESS_MS = 650;
-
-const WORD_PRESS_IGNORE = ".mic,.drag-handle,.pin-home,.bring-top";
-
-function wordPressIgnored(target) {
-  return target?.closest?.(WORD_PRESS_IGNORE);
-}
-
-/** Long-press on card body → re-record; tap → onTap (speak). Ignores mic / drag / pin. */
-function attachWordCardLongPress(card, word, onTap) {
-  let pressTimer = null;
-  let longPressFired = false;
-
-  card.addEventListener("pointerdown", (e) => {
-    if (wordPressIgnored(e.target)) return;
-    if (e.button > 0) return;
-    longPressFired = false;
-    pressTimer = setTimeout(() => {
-      pressTimer = null;
-      longPressFired = true;
-      if (!canManagePersonalRecordings()) {
-        promptSignInToRecord(word, card);
-        return;
-      }
-      card.classList.add("long-press-active");
-      navigator.vibrate?.(35);
-      toast(t("reRecording"));
-      startRecording(word, card);
-    }, WORD_LONG_PRESS_MS);
-  });
-
-  const cancelPress = () => {
-    if (pressTimer) {
-      clearTimeout(pressTimer);
-      pressTimer = null;
-    }
-    card.classList.remove("long-press-active");
-  };
-  card.addEventListener("pointerup", cancelPress);
-  card.addEventListener("pointerleave", cancelPress);
-  card.addEventListener("pointercancel", cancelPress);
-
-  card.addEventListener("click", async (e) => {
-    if (wordPressIgnored(e.target)) return;
-    if (longPressFired) {
-      longPressFired = false;
-      return;
-    }
-    await onTap();
-  });
-}
-
-function showRecordingUI(word) {
-  const overlay = document.getElementById("recordingOverlay");
-  const label = document.getElementById("recordingLabel");
-  const langLbl = document.getElementById("recordingLang");
-  if (!overlay) return;
-  const text = labelForWord(word, settings.locale, state.dialect);
-  const loc = getLocale(settings.locale);
-  const dia = getDialect(settings.locale, state.dialect);
-  label.textContent = `${t("recordingFor")} "${text}"`;
-  langLbl.textContent = `${t("recordingIn")} ${dia.nativeName || loc.nativeName}`;
-  openPanel(overlay, { focusEl: document.getElementById("recordingStopBtn") });
-}
-
-function hideRecordingUI() {
-  const overlay = document.getElementById("recordingOverlay");
-  if (!overlay) return;
-  closePanel(overlay);
-  const timer = document.getElementById("recordingTimer");
-  if (timer) timer.textContent = "0:00";
-  clearInterval(recTimer);
-  recTimer = null;
-}
-
-function updateRecTimer() {
-  const elTimer = document.getElementById("recordingTimer");
-  if (!elTimer) return;
-  const sec = Math.floor((Date.now() - recStart) / 1000);
-  const m = Math.floor(sec / 60);
-  const s = String(sec % 60).padStart(2, "0");
-  elTimer.textContent = `${m}:${s}`;
-}
-
-function readShareWithCommunity() {
-  const el = document.getElementById("caregiverShareCommunity")
-    || document.getElementById("recordAuthShareCommunity");
-  if (el) return el.checked;
-  return settings.shareWithCommunity !== false;
-}
-
-function persistShareWithCommunity(checked) {
-  settings = saveSettings({ shareWithCommunity: !!checked });
-  const ids = ["caregiverShareCommunity", "recordAuthShareCommunity"];
-  ids.forEach(id => {
-    const box = document.getElementById(id);
-    if (box) box.checked = !!checked;
-  });
-}
-
-function showAuthError(errorEl, msg) {
-  if (!errorEl) return;
-  if (msg) {
-    errorEl.textContent = msg;
-    errorEl.hidden = false;
-  } else {
-    errorEl.textContent = "";
-    errorEl.hidden = true;
-  }
-}
-
-function setAuthLoading(btn, loading, defaultLabel) {
-  if (!btn) return;
-  btn.disabled = !!loading;
-  btn.textContent = loading ? t("authLoading") : defaultLabel;
-}
-
-function resetRecordAuthPanel() {
-  showAuthError(document.getElementById("recordAuthError"), "");
-  const signedIn = document.getElementById("recordAuthSignedIn");
-  if (signedIn) signedIn.hidden = true;
-  const form = document.getElementById("recordAuthForm");
-  if (form) form.hidden = false;
-}
-
-function openRecordAuthPanel({ forCommunity = false } = {}) {
-  const panel = document.getElementById("recordAuthPanel");
-  if (!panel) return;
-  if (!SUPABASE_READY) {
-    toast(t("accountNotConfigured"));
-    openPanel(el.settingsPanel);
-    return;
-  }
-  closePanel(el.settingsPanel);
-  closePanel(el.contributePanel);
-  resetRecordAuthPanel();
-  document.getElementById("recordAuthHint").textContent = forCommunity
-    ? t("signInForCommunity")
-    : t("recordNeedsAccount");
-  document.getElementById("recordAuthTitle").textContent = forCommunity ? t("contribute") : t("account");
-  document.getElementById("recordAuthUsernameLbl").textContent = t("accountUsername");
-  document.getElementById("recordAuthPasswordLbl").textContent = t("accountPassword");
-  const passInput = document.getElementById("recordAuthPassword");
-  if (passInput) passInput.placeholder = t("accountPinPlaceholder");
-  document.getElementById("recordAuthShareLbl").textContent = t("shareWithCommunityHint");
-  document.getElementById("recordAuthSignInBtn").textContent = t("accountSignIn");
-  document.getElementById("recordAuthSignUpBtn").textContent = t("accountSignUp");
-  const userInput = document.getElementById("recordAuthUsername");
-  if (userInput) userInput.placeholder = t("accountUsernamePlaceholder");
-  const shareBox = document.getElementById("recordAuthShareCommunity");
-  if (shareBox) shareBox.checked = settings.shareWithCommunity !== false;
-  openPanel(panel, { focusEl: userInput });
 }
 
 async function shareRecordingWithCommunity(word, blob) {
@@ -283,43 +169,6 @@ async function shareRecordingWithCommunity(word, blob) {
   });
 }
 
-async function finishRecordingSave(w, blob, card) {
-  const shareWithCommunity = readShareWithCommunity();
-  await savePersonalRecording(w.id, settings.locale, state.dialect, blob, authUser, { shareWithCommunity });
-
-  card?.classList.add("has-rec");
-  if (card && !card.querySelector(".reciic")) {
-    const tick = document.createElement("span");
-    tick.className = "reciic"; tick.textContent = "🎙️"; card.appendChild(tick);
-  }
-  await playBlob(blob);
-  renderPersonalList();
-
-  if (!shareWithCommunity) {
-    toast(t("savedVoice"));
-    return;
-  }
-
-  const user = authUser || await getCurrentUser();
-  if (!user) {
-    pendingCommunityShareAfterAuth = { word: w, blob };
-    openRecordAuthPanel({ forCommunity: true });
-    toast(t("savedLocalOnly"));
-    return;
-  }
-
-  authUser = user;
-  const result = await shareRecordingWithCommunity(w, blob);
-  if (result?.rejected) {
-    toast(t("communityRejected"));
-    return;
-  }
-  if (result?.ok || result?.entry) {
-    toast(result?.ok ? t("communitySubmitted") : t("communitySubmitted"));
-    renderPendingQueue();
-  }
-}
-
 async function submitCommunityWord(payload) {
   const { text, englishHint, locale, shareOnline, ...rest } = payload;
   const mod = moderateWordEntry(text, englishHint, locale || settings.locale);
@@ -336,60 +185,6 @@ async function submitCommunityWord(payload) {
     shareOnline: !!shareOnline,
     ...rest
   });
-}
-
-async function startRecording(word, cardEl) {
-  if (!canManagePersonalRecordings()) {
-    promptSignInToRecord(word, cardEl);
-    return;
-  }
-  if (mediaRec?.state === "recording") { mediaRec.stop(); return; }
-  if (!navigator.mediaDevices?.getUserMedia) {
-    toast(t("micBlocked") || "This device can't record audio."); return;
-  }
-  let stream;
-  try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
-  catch { toast(t("micBlocked")); return; }
-
-  recordingWord = word;
-  recordingCard = cardEl;
-  recChunks = [];
-  recStream = stream;
-  mediaRec = new MediaRecorder(stream);
-  mediaRec.ondataavailable = e => { if (e.data.size > 0) recChunks.push(e.data); };
-  mediaRec.onstop = async () => {
-    recStream?.getTracks().forEach(tr => tr.stop());
-    recStream = null;
-    hideRecordingUI();
-    const blob = new Blob(recChunks, { type: mediaRec.mimeType || "audio/webm" });
-    const card = recordingCard;
-    const w = recordingWord;
-    recordingCard = null;
-    recordingWord = null;
-    card?.classList.remove("recording");
-
-    if (blob.size > 0 && w) {
-      try {
-        await finishRecordingSave(w, blob, card);
-      } catch (err) {
-        console.warn("savePersonalRecording failed:", err);
-        if (err?.message === "auth-required") {
-          toast(t("signInToSaveVoice"));
-          promptSignInToRecord(w, card);
-        } else {
-          toast(t("uploadFailed"));
-        }
-      }
-    }
-    mediaRec = null;
-  };
-
-  cardEl?.classList.add("recording");
-  showRecordingUI(word);
-  recStart = Date.now();
-  recTimer = setInterval(updateRecTimer, 500);
-  updateRecTimer();
-  mediaRec.start();
 }
 
 /* ---------------- Audio playback priority (active dialect D) ----------------
@@ -461,24 +256,30 @@ async function speakWord(word, cardEl) {
   }
 }
 
-let speakingSentence = false;
-
 async function speakSentence() {
-  if (!state.sentence.length || speakingSentence) return;
+  if (!state.sentence.length) return;
+  if (speakingSentence) {
+    stopAllAudio();
+    return;
+  }
   const btn = document.getElementById("speakBtn");
+  const gen = ++speakGeneration;
   speakingSentence = true;
   btn?.classList.add("loading-audio", "speaking");
   const chips = [...document.querySelectorAll("#strip .chip")];
   try {
     for (let i = 0; i < state.sentence.length; i++) {
+      if (gen !== speakGeneration) break;
       chips[i]?.classList.add("speaking");
       await playWordAudio(state.sentence[i]);
       chips[i]?.classList.remove("speaking");
     }
   } finally {
-    speakingSentence = false;
-    btn?.classList.remove("loading-audio", "speaking");
-    chips.forEach(c => c.classList.remove("speaking"));
+    if (gen === speakGeneration) {
+      speakingSentence = false;
+      btn?.classList.remove("loading-audio", "speaking");
+      chips.forEach(c => c.classList.remove("speaking"));
+    }
   }
 }
 
@@ -506,7 +307,6 @@ const el = {
   dialectSelect: document.getElementById("dialectSelect"),
   voiceSelect: document.getElementById("voiceSelect"),
   settingsPanel: document.getElementById("settingsPanel"),
-  contributePanel: document.getElementById("contributePanel"),
   pendingList: document.getElementById("pendingList"),
   pendingOnlineList: document.getElementById("pendingOnlineList")
 };
@@ -514,11 +314,22 @@ const el = {
 let settingsTab = "general";
 
 /* ---------------- Render ---------------- */
+function applyTheme() {
+  const dark = !!settings.darkMode;
+  document.documentElement.dataset.theme = dark ? "dark" : "light";
+  document.body.classList.toggle("theme-dark", dark);
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.content = dark ? "#1A2A32" : "#2E8C8C";
+}
+
 function applyChrome() {
   if (el.title) el.title.textContent = t("title");
   if (el.sayLbl) el.sayLbl.textContent = t("say");
   document.documentElement.lang = settings.locale;
   document.body.setAttribute("dir", effectiveDir(settings.locale, settings.secondaryLocale, settings.bilingual));
+  applyTheme();
+  const skip = document.getElementById("skipToBoard");
+  if (skip) skip.textContent = t("skipToBoard");
   renderLangIndicator();
   renderAccountBadge();
   updateAccountAuthLabels();
@@ -547,6 +358,11 @@ function updateSettingsPanelLabels() {
     caregiverModeLbl: "caregiverMode",
     showAllOnHomeLbl: "showAllOnHome",
     boardPresetLbl: "boardPreset",
+    darkModeLbl: "darkMode",
+    badgeLegendTitle: "badgeLegendTitle",
+    badgeLegendBody: "badgeLegendBody",
+    exportLayoutBtn: "exportLayout",
+    importLayoutBtn: "importLayout",
     voiceLbl: "voice",
     previewVoiceBtn: "preview",
     bilingualLbl: "bilingual",
@@ -586,6 +402,8 @@ function updateSettingsPanelLabels() {
   if (caregiverToggle) caregiverToggle.checked = !!settings.caregiverMode;
   const showAllToggle = document.getElementById("showAllOnHomeToggle");
   if (showAllToggle) showAllToggle.checked = !!settings.showAllOnHome;
+  const darkToggle = document.getElementById("darkModeToggle");
+  if (darkToggle) darkToggle.checked = !!settings.darkMode;
 }
 
 function updateBoardSection() {
@@ -921,11 +739,24 @@ function renderVoiceSelect() {
 }
 
 function renderCats() {
+  if (!el.cats) return;
   el.cats.innerHTML = "";
+  el.cats.setAttribute("role", "tablist");
+  el.cats.setAttribute("aria-label", t("boardTabsLabel"));
+  if (el.board) {
+    el.board.setAttribute("role", "tabpanel");
+    el.board.setAttribute("id", "board");
+    el.board.setAttribute("aria-labelledby", `cat-tab-${state.kidView}`);
+  }
   KID_VIEWS.forEach(v => {
     const b = document.createElement("button");
+    b.type = "button";
     b.className = "cat kid-cat";
-    b.setAttribute("aria-selected", v.id === state.kidView);
+    b.id = `cat-tab-${v.id}`;
+    b.setAttribute("role", "tab");
+    b.setAttribute("aria-selected", v.id === state.kidView ? "true" : "false");
+    b.setAttribute("aria-controls", "board");
+    b.tabIndex = v.id === state.kidView ? 0 : -1;
     const name = labelForKidView(v, settings.locale);
     b.innerHTML = `<span class="dot" style="background:${v.color}"></span><span class="cat-emoji">${v.icon}</span>${name}`;
     b.onclick = () => { state.kidView = v.id; renderCats(); updateBoardSection(); renderBoard(); };
@@ -1209,13 +1040,17 @@ function renderBoard() {
         if (showUnpinBtn) {
           unpinWord(w.id);
           toast(t("unpinnedFromHome"));
+          // Incremental: drop card from home without rebuilding the whole grid
+          card.remove();
+          if (!el.board.querySelector(".word") && state.kidView === "home") renderBoard();
         } else {
           const visible = wordsForKidView("home", mergeAllWords, settings.locale, state.dialect, { homeMax: getHomeMax() });
           const wasFull = visible.length >= getHomeMax();
           pinWord(w.id);
           toast(wasFull ? t("pinnedToHomeFull") : t("pinnedToHome"));
+          // Pin can reshuffle home composition — full render
+          renderBoard();
         }
-        renderBoard();
         if (state.kidView === "more" || state.kidView === "home") updateBoardSection();
       });
     }
@@ -1477,7 +1312,7 @@ function trapPanelFocus(e, panel) {
 }
 
 function closeTopModal() {
-  const order = ["recordingOverlay", "recordAuthPanel", "contributePanel", "settingsPanel"];
+  const order = ["recordingOverlay", "recordAuthPanel", "settingsPanel"];
   for (const id of order) {
     if (!openModals.has(id)) continue;
     if (id === "recordingOverlay") {
@@ -1574,8 +1409,6 @@ function collapseBoardContribute() {
 document.getElementById("contributeBtn")?.addEventListener("click", () => {
   expandBoardContribute();
 });
-document.getElementById("contributeClose")?.addEventListener("click", () => closePanel(el.contributePanel));
-document.getElementById("contributeClose2")?.addEventListener("click", () => closePanel(el.contributePanel));
 document.getElementById("boardContributeToggle")?.addEventListener("click", () => {
   const body = document.getElementById("boardContributeBody");
   const toggle = document.getElementById("boardContributeToggle");
@@ -1876,205 +1709,128 @@ document.getElementById("backBtn")?.addEventListener("click", () => { state.sent
 
 const wait = ms => new Promise(r => setTimeout(r, ms));
 
+/* ---------------- Feature module wiring ---------------- */
+function wireRecordingAndAuth() {
+  initRecording({
+    t,
+    getSettings: () => settings,
+    setSettings: (next) => { settings = next; },
+    getState: () => state,
+    getAuthUser: () => authUser,
+    setAuthUser: (u) => { authUser = u; },
+    canManagePersonalRecordings,
+    promptSignInToRecord,
+    toast,
+    openPanel,
+    closePanel,
+    labelForWord,
+    getLocale,
+    getDialect,
+    savePersonalRecording,
+    playBlob,
+    renderPersonalList: () => renderPersonalList(),
+    renderPendingQueue: () => renderPendingQueue(),
+    openRecordAuthPanel,
+    setPendingCommunityShare: (v) => { pendingCommunityShareAfterAuth = v; },
+    shareRecordingWithCommunity,
+    saveSettings
+  });
+  bindRecordingOverlayButtons();
+
+  initAuthUi({
+    t,
+    SUPABASE_READY,
+    toast,
+    openPanel,
+    closePanel,
+    getSettings: () => settings,
+    getSettingsPanel: () => el.settingsPanel,
+    getContributePanel: () => null,
+    persistShareWithCommunity,
+    getCurrentUser,
+    setAuthUser: (u) => { authUser = u; },
+    getAuthUser: () => authUser,
+    renderAccountBadge,
+    markManualAuthSession,
+    displayUsername,
+    initPersonal,
+    checkIsAdmin,
+    renderAdminLink,
+    wait: (ms) => new Promise(r => setTimeout(r, ms)),
+    takePendingRecordAfterAuth: () => {
+      const p = pendingRecordAfterAuth;
+      pendingRecordAfterAuth = null;
+      return p;
+    },
+    takePendingCommunityShare: () => {
+      const p = pendingCommunityShareAfterAuth;
+      pendingCommunityShareAfterAuth = null;
+      return p;
+    },
+    clearPendingAuthActions: () => {
+      pendingRecordAfterAuth = null;
+      pendingCommunityShareAfterAuth = null;
+    },
+    startRecording,
+    shareRecordingWithCommunity,
+    renderPendingQueue: () => renderPendingQueue(),
+    validateUsername,
+    validatePin,
+    signInWithPassword,
+    signUpWithPassword,
+    signOut,
+    onAuthChange,
+    updateCaregiverChrome,
+    renderBoard,
+    renderPersonalList: () => renderPersonalList(),
+    renderCustomWordsList,
+    openRecordAuthPanel
+  });
+}
+
+function setupDarkModeToggle() {
+  document.getElementById("darkModeToggle")?.addEventListener("change", (e) => {
+    settings = saveSettings({ darkMode: !!e.target.checked });
+    applyTheme();
+  });
+}
+
+function setupLayoutExportImport() {
+  document.getElementById("exportLayoutBtn")?.addEventListener("click", () => {
+    const data = exportBoardLayout();
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `talkboard-layout-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast(t("exportLayoutDone"));
+  });
+  document.getElementById("importLayoutBtn")?.addEventListener("click", () => {
+    document.getElementById("importLayoutFile")?.click();
+  });
+  document.getElementById("importLayoutFile")?.addEventListener("change", async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      const result = importBoardLayout(data);
+      if (!result.ok) {
+        toast(t("importLayoutFailed"));
+        return;
+      }
+      renderBoard();
+      toast(t("importLayoutDone"));
+    } catch {
+      toast(t("importLayoutFailed"));
+    }
+  });
+}
+
 /* ---------------- Init ---------------- */
-function setupRecordAuth() {
-  const panel = document.getElementById("recordAuthPanel");
-  if (!panel || !SUPABASE_READY) return;
-
-  const usernameInput = document.getElementById("recordAuthUsername");
-  const passInput = document.getElementById("recordAuthPassword");
-  const shareBox = document.getElementById("recordAuthShareCommunity");
-  const signInBtn = document.getElementById("recordAuthSignInBtn");
-  const signUpBtn = document.getElementById("recordAuthSignUpBtn");
-  const errorEl = document.getElementById("recordAuthError");
-  const signedInEl = document.getElementById("recordAuthSignedIn");
-  const formEl = document.getElementById("recordAuthForm");
-
-  shareBox?.addEventListener("change", e => persistShareWithCommunity(e.target.checked));
-
-  async function onAuthSuccess(user, mode) {
-    const sessionUser = await getCurrentUser();
-    authUser = sessionUser || user;
-    renderAccountBadge(authUser);
-    if (!authUser) {
-      showAuthError(errorEl, t("accountConfirmNeeded"));
-      return;
-    }
-    markManualAuthSession();
-    signedInEl.textContent = `${t("signedInAs")} ${displayUsername(authUser)}`;
-    signedInEl.hidden = false;
-    if (formEl) formEl.hidden = true;
-    showAuthError(errorEl, "");
-    await initPersonal(authUser);
-    checkIsAdmin().then(renderAdminLink).catch(() => renderAdminLink(false));
-    await wait(600);
-    closePanel(panel);
-    const pending = pendingRecordAfterAuth;
-    pendingRecordAfterAuth = null;
-    if (pending?.word) {
-      toast(mode === "signup" ? t("signUpSuccess") : `${t("signedInAs")} ${displayUsername(authUser)}`);
-      await startRecording(pending.word, pending.cardEl);
-      return;
-    }
-    const pendingShare = pendingCommunityShareAfterAuth;
-    pendingCommunityShareAfterAuth = null;
-    if (pendingShare?.word) {
-      toast(mode === "signup" ? t("signUpSuccess") : `${t("signedInAs")} ${displayUsername(authUser)}`);
-      const result = await shareRecordingWithCommunity(pendingShare.word, pendingShare.blob);
-      if (result?.rejected) toast(t("communityRejected"));
-      else if (result?.entry) {
-        toast(t("communitySubmitted"));
-        renderPendingQueue();
-      }
-    }
-  }
-
-  async function tryAuth(mode) {
-    showAuthError(errorEl, "");
-    const username = usernameInput?.value;
-    const password = passInput?.value;
-    const userCheck = validateUsername(username);
-    if (!userCheck.ok) {
-      showAuthError(errorEl, t("usernameInvalid"));
-      usernameInput?.focus();
-      return;
-    }
-    if (!validatePin(password).ok) {
-      showAuthError(errorEl, t("passwordTooShort"));
-      passInput?.focus();
-      return;
-    }
-    persistShareWithCommunity(shareBox?.checked !== false);
-    const btn = mode === "signin" ? signInBtn : signUpBtn;
-    const defaultLabel = t(mode === "signin" ? "accountSignIn" : "accountSignUp");
-    setAuthLoading(signInBtn, true, t("accountSignIn"));
-    setAuthLoading(signUpBtn, true, t("accountSignUp"));
-    const res = mode === "signin"
-      ? await signInWithPassword(username, password)
-      : await signUpWithPassword(username, password);
-    setAuthLoading(signInBtn, false, t("accountSignIn"));
-    setAuthLoading(signUpBtn, false, t("accountSignUp"));
-    if (res.ok && res.user && !res.needsConfirm) {
-      await onAuthSuccess(res.user, mode);
-      return;
-    }
-    if (res.ok && res.needsConfirm) {
-      showAuthError(errorEl, t("accountConfirmNeeded"));
-      return;
-    }
-    showAuthError(errorEl, res.error || (mode === "signin" ? t("wrongCredentials") : t("usernameTaken")));
-    btn?.focus();
-  }
-
-  signInBtn?.addEventListener("click", () => tryAuth("signin"));
-  signUpBtn?.addEventListener("click", () => tryAuth("signup"));
-  document.getElementById("recordAuthClose")?.addEventListener("click", () => {
-    pendingRecordAfterAuth = null;
-    pendingCommunityShareAfterAuth = null;
-    closePanel(panel);
-  });
-}
-
-function setupCaregiverAuth() {
-  const box = document.getElementById("caregiverAuth");
-  if (!box || !SUPABASE_READY) return;
-
-  const statusEl = document.getElementById("caregiverAuthStatus");
-  const errorEl = document.getElementById("caregiverAuthError");
-  const signInForm = document.getElementById("caregiverSignInForm");
-  const signedInBox = document.getElementById("caregiverSignedIn");
-  const signedInAsEl = document.getElementById("caregiverSignedInAs");
-  const usernameInput = document.getElementById("caregiverUsername");
-  const passInput = document.getElementById("caregiverPassword");
-  const signInBtn = document.getElementById("caregiverSignInBtn");
-  const signUpBtn = document.getElementById("caregiverSignUpBtn");
-  const signOutBtn = document.getElementById("caregiverSignOutBtn");
-
-  async function reflect(user) {
-    authUser = user || null;
-    renderAccountBadge(authUser);
-    updateCaregiverChrome();
-    showAuthError(errorEl, "");
-    if (user) {
-      statusEl.textContent = t("accountHint");
-      signedInAsEl.textContent = `${t("signedInAs")} ${displayUsername(user)}`;
-      signInForm.hidden = true;
-      signedInBox.hidden = false;
-      const sync = await initPersonal(user);
-      if (sync.recordings || sync.words) {
-        toast(`Synced ${sync.recordings} recording(s), ${sync.words} word(s).`);
-      }
-      renderBoard();
-      renderPersonalList();
-      renderCustomWordsList();
-      renderPendingQueue().catch(() => {});
-      checkIsAdmin().then(renderAdminLink).catch(() => renderAdminLink(false));
-    } else {
-      statusEl.textContent = t("accountHint");
-      signInForm.hidden = false;
-      signedInBox.hidden = true;
-      renderAdminLink(false);
-      renderBoard();
-      renderPersonalList();
-      renderCustomWordsList();
-    }
-  }
-
-  async function runAuth(mode) {
-    showAuthError(errorEl, "");
-    const username = usernameInput?.value;
-    const password = passInput?.value;
-    const userCheck = validateUsername(username);
-    if (!userCheck.ok) {
-      showAuthError(errorEl, t("usernameInvalid"));
-      usernameInput?.focus();
-      return;
-    }
-    if (!validatePin(password).ok) {
-      showAuthError(errorEl, t("passwordTooShort"));
-      passInput?.focus();
-      return;
-    }
-    persistShareWithCommunity(document.getElementById("caregiverShareCommunity")?.checked !== false);
-    const btn = mode === "signin" ? signInBtn : signUpBtn;
-    setAuthLoading(signInBtn, true, t("accountSignIn"));
-    setAuthLoading(signUpBtn, true, t("accountSignUp"));
-    const res = mode === "signin"
-      ? await signInWithPassword(username, password)
-      : await signUpWithPassword(username, password);
-    setAuthLoading(signInBtn, false, t("accountSignIn"));
-    setAuthLoading(signUpBtn, false, t("accountSignUp"));
-    if (res.ok && res.user && !res.needsConfirm) {
-      markManualAuthSession();
-      toast(mode === "signup" ? t("signUpSuccess") : `${t("signedInAs")} ${displayUsername(res.user)}`);
-      await reflect(res.user);
-      return;
-    }
-    if (res.ok && res.needsConfirm) {
-      showAuthError(errorEl, t("accountConfirmNeeded"));
-      return;
-    }
-    showAuthError(errorEl, res.error || (mode === "signin" ? t("wrongCredentials") : t("usernameTaken")));
-    btn?.focus();
-  }
-
-  signInBtn?.addEventListener("click", () => runAuth("signin"));
-  signUpBtn?.addEventListener("click", () => runAuth("signup"));
-
-  document.getElementById("caregiverShareCommunity")?.addEventListener("change", e => {
-    persistShareWithCommunity(e.target.checked);
-  });
-
-  signOutBtn?.addEventListener("click", async () => {
-    await signOut();
-    authUser = null;
-    reflect(null);
-  });
-
-  getCurrentUser().then(reflect).catch(() => reflect(null));
-  onAuthChange(user => reflect(user));
-}
-
 async function renderPersonalList() {
   const list = document.getElementById("personalRecList");
   if (!list) return;
@@ -2256,73 +2012,13 @@ function setupCustomWordForm() {
   }
 }
 
-document.getElementById("recordingStopBtn")?.addEventListener("click", () => {
-  if (mediaRec?.state === "recording") mediaRec.stop();
-});
-document.getElementById("recordingCancelBtn")?.addEventListener("click", () => {
-  if (mediaRec?.state === "recording") {
-    recordingWord = null;
-    recordingCard?.classList.remove("recording");
-    recordingCard = null;
-    mediaRec.onstop = () => {
-      recStream?.getTracks().forEach(tr => tr.stop());
-      recStream = null;
-      hideRecordingUI();
-      mediaRec = null;
-    };
-    mediaRec.stop();
-  } else {
-    hideRecordingUI();
-  }
-});
-
 function setupContributorAuth() {
-  const shareField = document.getElementById("shareOnlineField");
   const boardShareField = document.getElementById("boardShareOnlineField");
-  const authBox = document.getElementById("contribAuth");
-  if (!SUPABASE_READY) return; // graceful degradation: stays hidden, fully local
+  if (!SUPABASE_READY) return;
 
-  shareField.hidden = false;
   if (boardShareField) boardShareField.hidden = false;
-  authBox.hidden = false;
 
-  const statusEl = document.getElementById("authStatus");
-  const signInRow = document.getElementById("signInRow");
-  const signOutBtn = document.getElementById("signOutBtn");
-  const emailInput = document.getElementById("contribEmail");
-  const signInBtn = document.getElementById("signInBtn");
-
-  function reflect(user) {
-    if (user && usesTalkboardAccount(user)) {
-      authBox.hidden = true;
-      return;
-    }
-    authBox.hidden = false;
-    if (user) {
-      statusEl.textContent = `${t("contributor")}: ${displayUsername(user)}`;
-      signInRow.hidden = true;
-      signOutBtn.hidden = false;
-      if (emailInput) emailInput.value = "";
-    } else {
-      statusEl.textContent = t("signIn") + " — " + t("shareOnline");
-      signInRow.hidden = false;
-      signOutBtn.hidden = true;
-    }
-  }
-
-  signInBtn?.addEventListener("click", async () => {
-    const email = emailInput?.value.trim();
-    if (!email) return;
-    signInBtn.disabled = true;
-    const res = await signInWithEmail(email);
-    signInBtn.disabled = false;
-    toast(res.ok ? "Check your email for the sign-in link." : (res.error || "Sign-in failed."));
-  });
-  signOutBtn?.addEventListener("click", async () => { await signOut(); });
-
-  getCurrentUser().then(reflect).catch(() => reflect(null));
   onAuthChange(async (user) => {
-    reflect(user);
     if (user) {
       const r = await syncShareQueue();
       if (r.uploaded) toast(`Shared ${r.uploaded} contribution(s) online.`);
@@ -2466,20 +2162,23 @@ async function checkServiceWorkerUpdate() {
 function bootUI() {
   state.dialect = settings.dialect;
   bumpVisitCount();
+  wireRecordingAndAuth();
   populateContribCategories();
   populateSecondaryLocales();
   setupContributorAuth();
   setupAccountBadge();
-  setupContribForm("contrib", { onSuccess: () => closePanel(el.contributePanel) });
   setupContribForm("boardContrib", { onSuccess: () => collapseBoardContribute() });
   setupCaregiverAuth();
   setupRecordAuth();
+  setupDarkModeToggle();
+  setupLayoutExportImport();
   setupCustomWordForm();
   setupSettings();
   setupCoach();
   setupInstallPrompt();
   setupMoreSearch();
   checkServiceWorkerUpdate();
+  evictAudioCachesIfNeeded().catch(() => {});
   refreshAll();
 }
 

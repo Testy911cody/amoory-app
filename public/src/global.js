@@ -6,6 +6,7 @@ import {
 } from "./supabase.js";
 import { recKey, recordingLangCode, getRecordedKeys, loadRecordedKeys } from "./personal.js";
 import { openTalkBoardDB } from "./idb.js";
+import { touchGlobalCache, evictGlobalCacheIfNeeded, isPersonalBlobKey } from "./idb-evict.js";
 import { checkIsAdmin } from "./community.js";
 import { dialectsToLoad, siblingDialectFor } from "./dialect-fallback.js";
 import {
@@ -52,12 +53,16 @@ function queueGlobalSubmission({ wordId, locale, dialect, audioBlob }) {
 
 async function saveBlobLocal(key, blob) {
   const db = await openTalkBoardDB();
-  return new Promise((res, rej) => {
+  await new Promise((res, rej) => {
     const tx = db.transaction("recordings", "readwrite");
     tx.objectStore("recordings").put(blob, key);
     tx.oncomplete = res;
     tx.onerror = rej;
   });
+  if (!isPersonalBlobKey(key) && !String(key).startsWith("sync_global__")) {
+    touchGlobalCache(key);
+    evictGlobalCacheIfNeeded().catch(() => {});
+  }
 }
 
 function notifyRecordingCached(key, wordId) {

@@ -268,7 +268,18 @@ export const UI_STRINGS = {
     voiceAuto: "Auto",
     wordSavedLocal: "Word saved on this device.",
     localOnlyNote: "Saved locally — approve in Pending words. Sign in to share online.",
-    pendingOnlineHintAdmin: "Words shared online. Admins can approve them for everyone."
+    pendingOnlineHintAdmin: "Words shared online. Admins can approve them for everyone.",
+    darkMode: "Dark mode",
+    boardTabsLabel: "Board sections",
+    skipToBoard: "Skip to board",
+    recordingMaxReached: "Recording stopped (time limit).",
+    badgeLegendTitle: "Card badges",
+    badgeLegendBody: "🎙️ Your recording · 👥 Community word · ⭐ Your custom word. On More, tap ⭐ to pin a word on Talk.",
+    exportLayout: "Export pins & order",
+    importLayout: "Import pins & order",
+    exportLayoutDone: "Layout exported.",
+    importLayoutDone: "Layout imported.",
+    importLayoutFailed: "Could not import that file."
   },
   ar: {
     title: "لوحة الكلام",
@@ -431,7 +442,18 @@ export const UI_STRINGS = {
     voiceAuto: "تلقائي",
     wordSavedLocal: "اتحفظت الكلمة على هذا الجهاز.",
     localOnlyNote: "اتحفظت محلياً — وافق من كلمات للموافقة. سجّل دخولك للمشاركة أونلاين.",
-    pendingOnlineHintAdmin: "كلمات مشتركة أونلاين. المسؤول يوافق عليها للجميع."
+    pendingOnlineHintAdmin: "كلمات مشتركة أونلاين. المسؤول يوافق عليها للجميع.",
+    darkMode: "الوضع الداكن",
+    boardTabsLabel: "أقسام اللوحة",
+    skipToBoard: "تخطّي إلى اللوحة",
+    recordingMaxReached: "توقف التسجيل (انتهى الوقت).",
+    badgeLegendTitle: "شارات البطاقات",
+    badgeLegendBody: "🎙️ تسجيلك · 👥 كلمة مجتمعية · ⭐ كلمتك. في «كلمات أكثر» دوس ⭐ لتثبيت كلمة في كلام.",
+    exportLayout: "تصدير التثبيت والترتيب",
+    importLayout: "استيراد التثبيت والترتيب",
+    exportLayoutDone: "تم تصدير الترتيب.",
+    importLayoutDone: "تم استيراد الترتيب.",
+    importLayoutFailed: "ما قدرنا نستورد هذا الملف."
   }
 };
 
@@ -493,7 +515,8 @@ export function defaultSettings() {
     shareWithCommunity: true,
     showAllOnHome: false,
     caregiverMode: false,
-    boardPreset: "default"
+    boardPreset: "default",
+    darkMode: false
   };
 }
 

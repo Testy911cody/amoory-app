@@ -3,6 +3,7 @@
 
 import { getSupabase, SUPABASE_READY, AUDIO_BUCKET, getCurrentUser, isOnline } from "./supabase.js";
 import { openTalkBoardDB } from "./idb.js";
+import { touchCommunityAudio, evictCommunityAudioIfNeeded } from "./idb-evict.js";
 import { moderateForCommunity, logModerationRejection } from "./moderation.js";
 import { siblingDialectFor } from "./dialect-fallback.js";
 import { queueFetchBlob, runBatched, PRIORITY } from "./audio-loader.js";
@@ -171,12 +172,15 @@ function audioKey(id) {
 
 async function saveCommunityAudio(id, blob) {
   const database = await openDB();
-  return new Promise((res, rej) => {
+  const key = audioKey(id);
+  await new Promise((res, rej) => {
     const tx = database.transaction("community_audio", "readwrite");
-    tx.objectStore("community_audio").put(blob, audioKey(id));
+    tx.objectStore("community_audio").put(blob, key);
     tx.oncomplete = res;
     tx.onerror = rej;
   });
+  touchCommunityAudio(key);
+  evictCommunityAudioIfNeeded().catch(() => {});
 }
 
 export async function getCommunityAudio(id) {
@@ -187,7 +191,10 @@ export async function getCommunityAudio(id) {
     rq.onsuccess = () => res(rq.result || null);
     rq.onerror = () => res(null);
   });
-  if (cached) return cached;
+  if (cached) {
+    touchCommunityAudio(audioKey(id));
+    return cached;
+  }
 
   const remote = readRemoteApproved().find(w => w.id === id);
   if (remote?.audioUrl && isOnline()) {

@@ -129,6 +129,11 @@ function previewSampleFor(ttsLang) {
   return samples[p] || samples.en;
 }
 
+export function stopSpeaking() {
+  if (!("speechSynthesis" in window)) return;
+  try { speechSynthesis.cancel(); } catch { /* ignore */ }
+}
+
 export function unlockAudio() {
   if (!("speechSynthesis" in window)) return;
   loadVoices();

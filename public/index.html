@@ -36,6 +36,7 @@
 <link rel="stylesheet" href="./src/styles.css">
 </head>
 <body class="kid-mode">
+  <a class="skip-link" href="#board" id="skipToBoard">Skip to board</a>
   <div class="topbar">
     <button class="icon-btn topbar-corner" id="settingsBtn" title="Settings">⚙️</button>
     <div class="title" id="appTitle">Talk Board</div>
@@ -175,6 +176,21 @@
           <select id="boardPresetSelect" aria-label="Home board size"></select>
         </label>
 
+        <label class="field check">
+          <input type="checkbox" id="darkModeToggle">
+          <span id="darkModeLbl">Dark mode</span>
+        </label>
+
+        <hr>
+        <h3 id="badgeLegendTitle">Card badges</h3>
+        <p class="muted" id="badgeLegendBody">🎙️ Your recording · 👥 Community word · ⭐ Your custom word.</p>
+
+        <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:12px">
+          <button type="button" class="btn-secondary" id="exportLayoutBtn">Export pins & order</button>
+          <button type="button" class="btn-secondary" id="importLayoutBtn">Import pins & order</button>
+          <input type="file" id="importLayoutFile" accept="application/json,.json" hidden>
+        </div>
+
         <hr>
         <label class="field">
           <span id="voiceLbl">Voice</span>
@@ -269,55 +285,7 @@
     </div>
   </div>
 
-  <!-- Contribute word panel -->
-  <div class="panel" id="contributePanel" hidden aria-hidden="true">
-    <div class="panel-inner">
-      <div class="panel-head">
-        <h2>Suggest a word</h2>
-        <button class="icon-btn" id="contributeClose" aria-label="Close">✕</button>
-      </div>
-      <form class="panel-form" id="contribForm">
-        <div class="panel-body">
-          <label class="field">
-            <span>Word</span>
-            <input type="text" id="contribText" required maxlength="80" placeholder="Type the word in your language">
-          </label>
-          <label class="field">
-            <span>Category</span>
-            <select id="contribCategory" required></select>
-          </label>
-          <label class="field">
-            <span>Emoji (optional)</span>
-            <input type="text" id="contribEmoji" maxlength="4" placeholder="💬">
-          </label>
-          <div class="field">
-            <span>Record audio (optional)</span>
-            <button type="button" class="btn-record" id="contribRecordBtn">🎤 Record</button>
-          </div>
-
-          <!-- Online sharing (only shown when Supabase is configured) -->
-          <div class="field check" id="shareOnlineField" hidden>
-            <input type="checkbox" id="contribShareOnline" checked>
-            <span id="shareOnlineLbl">Contribute free words to the community dialect library</span>
-          </div>
-          <div class="contrib-auth" id="contribAuth" hidden>
-            <p class="muted" id="authStatus">Sign in to share recordings with everyone.</p>
-            <div class="row" id="signInRow">
-              <input type="email" id="contribEmail" placeholder="you@email.com" autocomplete="email">
-              <button type="button" class="btn-secondary" id="signInBtn">Send link</button>
-            </div>
-            <button type="button" class="btn-secondary" id="signOutBtn" hidden>Sign out</button>
-          </div>
-
-          <p class="muted">Submissions stay pending until approved. Approved words appear on the board for this device. When online sharing is set up and you sign in, contributions are reviewed by a moderator before going live for everyone.</p>
-        </div>
-        <div class="panel-actions">
-          <button type="button" class="btn-secondary" id="contributeClose2">Cancel</button>
-          <button type="submit" class="btn-primary">Submit</button>
-        </div>
-      </form>
-    </div>
-  </div>
+  <!-- Contribute panel removed (v32) — suggest-word lives in boardContributeSection -->
 
   <!-- Auth panel for community contribution after recording -->
   <div class="panel panel-auth" id="recordAuthPanel" role="dialog" aria-modal="true" hidden aria-hidden="true">
@@ -359,6 +327,7 @@
       <p class="recording-label" id="recordingLabel">Recording…</p>
       <p class="recording-lang muted" id="recordingLang"></p>
       <p class="recording-timer" id="recordingTimer">0:00</p>
+      <progress id="recordingProgress" class="recording-progress" max="12000" value="0" hidden aria-label="Recording length"></progress>
       <div class="recording-actions">
         <button type="button" class="btn-record-stop" id="recordingStopBtn">⏹ Stop</button>
         <button type="button" class="btn-secondary" id="recordingCancelBtn">Cancel</button>

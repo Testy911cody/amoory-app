@@ -6,6 +6,7 @@ import {
 } from "./supabase.js";
 import { ttsLangFor } from "./locales.js";
 import { openTalkBoardDB } from "./idb.js";
+import { markPersonalBlobKey } from "./idb-evict.js";
 import { siblingDialectFor } from "./dialect-fallback.js";
 import { queueFetchBlob, runBatched, PRIORITY } from "./audio-loader.js";
 
@@ -34,7 +35,10 @@ function saveBlobLocal(key, blob) {
   return openDB().then(() => new Promise((res, rej) => {
     const tx = db.transaction("recordings", "readwrite");
     tx.objectStore("recordings").put(blob, key);
-    tx.oncomplete = res;
+    tx.oncomplete = () => {
+      markPersonalBlobKey(key);
+      res();
+    };
     tx.onerror = rej;
   }));
 }

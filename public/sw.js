@@ -1,33 +1,36 @@
 /* Talk Board service worker — makes the app work offline.
    Bump CACHE_VERSION whenever app files change so users get the update. */
-const CACHE_VERSION = "talkboard-v31";
+const CACHE_VERSION = "talkboard-v32";
 const SHELL_URL = "./index.html";
 const SUPABASE_ESM =
   "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/+esm";
 const CORE_ASSETS = [
-  SHELL_URL,
+  "./index.html",
   "./promo.html",
   "./admin.html",
   "./privacy.html",
+  "./src/admin-api.js",
+  "./src/admin.js",
   "./src/app.js",
   "./src/audio-loader.js",
-  "./src/admin.js",
-  "./src/admin-api.js",
-  "./src/data.js",
-  "./src/config.js",
-  "./src/supabase.js",
-  "./src/locales.js",
-  "./src/tts.js",
   "./src/community.js",
-  "./src/personal.js",
-  "./src/global.js",
+  "./src/config.js",
+  "./src/data.js",
   "./src/dialect-fallback.js",
+  "./src/features/auth-ui.js",
+  "./src/features/recording.js",
+  "./src/global.js",
+  "./src/idb-evict.js",
+  "./src/idb.js",
+  "./src/kid-ui.js",
+  "./src/locales.js",
   "./src/moderation.js",
   "./src/native.js",
-  "./src/idb.js",
+  "./src/personal.js",
   "./src/priorities.js",
+  "./src/supabase.js",
+  "./src/tts.js",
   "./src/usage.js",
-  "./src/kid-ui.js",
   "./src/styles.css",
   "./manifest.json",
   "./icons/icon-192.png",
@@ -36,7 +39,7 @@ const CORE_ASSETS = [
   "./icons/apple-touch-icon.png",
   "./icons/favicon-16.png",
   "./icons/favicon-32.png",
-  SUPABASE_ESM
+  "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/+esm"
 ];
 
 function networkFetch(req) {
