@@ -9,9 +9,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const swSrc = fs.readFileSync(path.join(__dirname, "..", "public", "sw.js"), "utf8");
 const EXPECTED_SW = swSrc.match(/CACHE_VERSION = "([^"]+)"/)?.[1] || "talkboard-v31";
 
+const localOnly = process.env.TALKBOARD_TEST_LOCAL_ONLY === "1";
 const URLS = [
   { name: "local", url: "http://127.0.0.1:3000/" },
-  { name: "production", url: "https://housegames.club/amoory/" },
+  ...(localOnly ? [] : [{ name: "production", url: "https://housegames.club/amoory/" }]),
 ];
 
 const results = [];
@@ -90,7 +91,7 @@ async function testEnv({ name, url }) {
     });
     const swMatch = swText.match(/CACHE_VERSION = "([^"]+)"/);
     const swVersion = swMatch?.[1] || "missing";
-    const swOk = name === "local" ? swVersion === EXPECTED_SW : !!swVersion;
+    const swOk = swVersion === EXPECTED_SW;
     record(name, `Service worker ${EXPECTED_SW}`, swOk, swVersion);
 
     const supabaseReady = await page.evaluate(async () => {
@@ -170,6 +171,51 @@ async function testEnv({ name, url }) {
     record(name, "Toast a11y role=status", toastLive || true, toastLive ? "present" : "created on first toast");
 
     await openSettings(page);
+
+    const skipLink = await page.locator("#skipToBoard").count();
+    record(name, "Skip to board link", skipLink === 1);
+
+    const darkToggle = page.locator("#darkModeToggle");
+    const darkPresent = await darkToggle.count();
+    record(name, "Dark mode toggle in settings", darkPresent === 1);
+    if (darkPresent) {
+      await darkToggle.check();
+      await page.waitForTimeout(200);
+      const darkOn = await page.evaluate(() =>
+        document.documentElement.dataset.theme === "dark" ||
+        document.body.classList.contains("theme-dark")
+      );
+      record(name, "Dark mode applies theme", darkOn);
+      await darkToggle.uncheck();
+      await page.waitForTimeout(150);
+    }
+
+    const badgeLegend = await page.locator("#badgeLegendBody").count();
+    record(name, "Badge legend in settings", badgeLegend === 1);
+    const exportBtn = await page.locator("#exportLayoutBtn").count();
+    const importBtn = await page.locator("#importLayoutBtn").count();
+    record(name, "Export/import layout controls", exportBtn === 1 && importBtn === 1);
+
+    const tablistOk = await page.evaluate(() => {
+      const cats = document.getElementById("cats");
+      if (!cats || cats.getAttribute("role") !== "tablist") return false;
+      const tabs = [...cats.querySelectorAll('[role="tab"]')];
+      if (!tabs.length) return false;
+      const selected = tabs.filter((t) => t.getAttribute("aria-selected") === "true");
+      const board = document.getElementById("board");
+      return selected.length === 1 && board?.getAttribute("role") === "tabpanel";
+    });
+    record(name, "Cats tablist ARIA", tablistOk);
+
+    const noContributePanel = await page.evaluate(() => !document.getElementById("contributePanel"));
+    record(name, "Dead contributePanel removed", noContributePanel);
+
+    const recCap = await page.evaluate(() => {
+      const p = document.getElementById("recordingProgress");
+      return p ? Number(p.getAttribute("max")) : 0;
+    });
+    record(name, "Recording max ~12s UI", recCap >= 10000 && recCap <= 12000, String(recCap));
+
     const pendingTab = page.locator("#settingsTabPendingBtn");
     if (await pendingTab.isVisible()) {
       await pendingTab.click();
