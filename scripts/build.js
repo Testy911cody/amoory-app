@@ -17,7 +17,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "..");
 
 /** Keep in sync with intentional cache busts — also written into public/sw.js + dist. */
-const CACHE_VERSION = "talkboard-v32";
+const CACHE_VERSION = "talkboard-v33";
 
 function rimraf(dir) {
   if (!fs.existsSync(dir)) return;

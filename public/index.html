@@ -38,13 +38,19 @@
 <body class="kid-mode">
   <a class="skip-link" href="#board" id="skipToBoard">Skip to board</a>
   <div class="topbar">
-    <button class="icon-btn topbar-corner" id="settingsBtn" title="Settings">⚙️</button>
-    <div class="title" id="appTitle">Talk Board</div>
-    <button type="button" id="accountBadge" class="account-badge" aria-live="polite" hidden></button>
-    <span id="offlineBadge" class="offline-badge" hidden aria-live="polite"></span>
-    <span id="langIndicator" class="lang-chip" aria-live="polite" title="Current speak language"></span>
-    <div class="topbar-actions">
-      <button class="icon-btn" id="contributeBtn" title="Suggest a word" hidden>➕</button>
+    <div class="topbar-start">
+      <button type="button" class="icon-btn topbar-corner" id="settingsBtn" title="Settings" aria-label="Settings">⚙️</button>
+    </div>
+    <div class="topbar-center">
+      <div class="title" id="appTitle">Talk Board</div>
+      <span id="langIndicator" class="lang-chip" aria-live="polite" title="Current speak language"></span>
+    </div>
+    <div class="topbar-end">
+      <button type="button" id="accountBadge" class="account-badge" aria-live="polite" hidden></button>
+      <span id="offlineBadge" class="offline-badge" hidden aria-live="polite"></span>
+      <div class="topbar-actions">
+        <button type="button" class="icon-btn" id="contributeBtn" title="Suggest a word" hidden>➕</button>
+      </div>
     </div>
   </div>
 

@@ -555,7 +555,8 @@ function setupSyncBanner() {
     banner.className = "sync-banner";
     banner.hidden = true;
     banner.innerHTML = `<span id="syncBannerText"></span><button type="button" id="syncBannerDismiss" aria-label="${t("syncingVoicesDismiss")}">×</button>`;
-    document.querySelector(".topbar")?.appendChild(banner);
+    document.querySelector(".topbar-end")?.appendChild(banner)
+      || document.querySelector(".topbar")?.appendChild(banner);
     document.getElementById("syncBannerDismiss")?.addEventListener("click", () => {
       syncBannerDismissed = true;
       banner.hidden = true;
@@ -1496,30 +1497,54 @@ function setupSettings() {
 
   let holdTimer = null;
   let holdFired = false;
+  let holding = false;
 
-  settingsBtn.addEventListener("pointerdown", (e) => {
-    if (e.button > 0) return;
-    holdFired = false;
-    holdTimer = setTimeout(() => {
-      holdTimer = null;
-      holdFired = true;
-      navigator.vibrate?.(20);
-      openSettings();
-    }, SETTINGS_HOLD_MS);
-  });
-
-  const cancelHold = () => {
+  const clearHoldTimer = () => {
     if (holdTimer) {
       clearTimeout(holdTimer);
       holdTimer = null;
     }
   };
-  settingsBtn.addEventListener("pointerup", cancelHold);
-  settingsBtn.addEventListener("pointerleave", cancelHold);
-  settingsBtn.addEventListener("pointercancel", cancelHold);
+
+  const endHold = (e) => {
+    if (!holding) return;
+    holding = false;
+    clearHoldTimer();
+    try { settingsBtn.releasePointerCapture?.(e.pointerId); } catch { /* already released */ }
+  };
+
+  settingsBtn.addEventListener("pointerdown", (e) => {
+    if (e.button > 0) return;
+    holding = true;
+    holdFired = false;
+    clearHoldTimer();
+    try { settingsBtn.setPointerCapture(e.pointerId); } catch { /* unsupported */ }
+    holdTimer = setTimeout(() => {
+      holdTimer = null;
+      holdFired = true;
+      holding = false;
+      navigator.vibrate?.(20);
+      openSettings();
+    }, SETTINGS_HOLD_MS);
+  });
+
+  settingsBtn.addEventListener("pointerup", endHold);
+  settingsBtn.addEventListener("pointercancel", endHold);
+  settingsBtn.addEventListener("lostpointercapture", () => {
+    holding = false;
+    clearHoldTimer();
+  });
+  /* Do not cancel on pointerleave — finger drift cancels 2s holds on mobile.
+     Pointer capture keeps the gesture alive until up/cancel. */
   settingsBtn.addEventListener("click", (e) => {
     e.preventDefault();
-    if (holdFired) holdFired = false;
+    e.stopPropagation();
+    if (holdFired) {
+      holdFired = false;
+      return;
+    }
+    toast(t("settingsHoldTip"));
+    navigator.vibrate?.(10);
   });
 
   document.getElementById("resetUsageBtn")?.addEventListener("click", () => {
