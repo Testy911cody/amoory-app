@@ -37,7 +37,7 @@ import {
 import { HOME_MAX_WORDS } from "./priorities.js";
 import {
   recordWordUse, getUniqueWordCount, resetUsageStats,
-  setCardOrderForView, pinWord, unpinWord, isWordPinned, bringWordToTop,
+  setCardOrderForView, pinWord, unpinWord, isWordPinned, bringWordToTop, sendWordToBottom,
   exportBoardLayout, importBoardLayout
 } from "./usage.js";
 import { moderateWordEntry, logModerationRejection } from "./moderation.js";
@@ -1083,13 +1083,17 @@ function renderBoard() {
     const bringTopHtml = index > 0
       ? `<button type="button" class="bring-top" title="${t("bringToTop")}" aria-label="${t("bringToTop")}">⬆</button>`
       : "";
+    const sendBottomHtml = index < list.length - 1
+      ? `<button type="button" class="send-bottom" title="${t("sendToBottom")}" aria-label="${t("sendToBottom")}">⬇</button>`
+      : "";
     const labelHtml = isHomeView
       ? `<span class="lbl lbl-min">${labelForWord(w, settings.locale, state.dialect)}</span>`
       : (w.tier === 0 || w.isCore)
         ? `<span class="lbl lbl-min">${labelForWord(w, settings.locale, state.dialect)}</span>`
         : wordLabelHtml(w);
 
-    card.innerHTML = dragHtml + micHtml + pinHtml + bringTopHtml
+    if (micHtml) card.classList.add("has-mic");
+    card.innerHTML = dragHtml + micHtml + pinHtml + bringTopHtml + sendBottomHtml
       + `<span class="emoji">${w.emoji}</span>${labelHtml}${badges.join("")}`;
 
     attachWordCardLongPress(card, w, async () => {
@@ -1152,6 +1156,16 @@ function renderBoard() {
         e.stopPropagation();
         bringWordToTop(viewKey, w.id, list.map(item => item.id));
         toast(t("broughtToTop"));
+        renderBoard();
+      });
+    }
+    const sendBottomBtn = card.querySelector(".send-bottom");
+    if (sendBottomBtn) {
+      sendBottomBtn.addEventListener("pointerdown", (e) => e.stopPropagation());
+      sendBottomBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        sendWordToBottom(viewKey, w.id, list.map(item => item.id));
+        toast(t("sentToBottom"));
         renderBoard();
       });
     }

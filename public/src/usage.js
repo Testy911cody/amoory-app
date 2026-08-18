@@ -150,6 +150,14 @@ export function bringWordToTop(viewKey, wordId, currentWordIds) {
   setCardOrderForView(viewKey, [wordId, ...rest]);
 }
 
+/** Move one word to the last position in the saved order for a view. */
+export function sendWordToBottom(viewKey, wordId, currentWordIds) {
+  if (!wordId || !Array.isArray(currentWordIds) || !currentWordIds.length) return;
+  const rest = currentWordIds.filter(id => id && id !== wordId);
+  if (!rest.length) return;
+  setCardOrderForView(viewKey, [...rest, wordId]);
+}
+
 /** Therapist handoff: pins + per-view card order as JSON. */
 export function exportBoardLayout() {
   return {

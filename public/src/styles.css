@@ -281,6 +281,24 @@ body[dir="rtl"] .word--sm .bring-top{right:auto;left:4px;}
 body[dir="rtl"] .word--home .bring-top{right:auto;left:2px;}
 .word--home.has-rec .bring-top{bottom:20px;}
 
+/* per-card send to bottom — top of card, same side as ⬆, offset when mic is present */
+.send-bottom{position:absolute;top:6px;right:6px;width:28px;height:28px;border-radius:50%;
+  border:2px solid var(--line);background:#fff;color:var(--accent);font-size:14px;font-weight:800;
+  line-height:1;display:flex;align-items:center;justify-content:center;
+  cursor:pointer;z-index:3;padding:0;opacity:.9;box-shadow:0 1px 4px rgba(30,58,69,.12);}
+body[dir="rtl"] .send-bottom{right:auto;left:6px;}
+.send-bottom:hover,.send-bottom:focus-visible{background:#E8F4F8;border-color:var(--accent);}
+.word.has-mic .send-bottom{right:44px;}
+body[dir="rtl"] .word.has-mic .send-bottom{right:auto;left:44px;}
+.word--sm .send-bottom{width:26px;height:26px;font-size:12px;top:4px;right:4px;}
+body[dir="rtl"] .word--sm .send-bottom{right:auto;left:4px;}
+.word--sm.has-mic .send-bottom{right:40px;}
+body[dir="rtl"] .word--sm.has-mic .send-bottom{right:auto;left:40px;}
+.word--home .send-bottom{width:26px;height:26px;font-size:12px;top:2px;right:2px;}
+body[dir="rtl"] .word--home .send-bottom{right:auto;left:2px;}
+.word--home.has-mic .send-bottom{right:36px;}
+body[dir="rtl"] .word--home.has-mic .send-bottom{right:auto;left:36px;}
+
 /* recording overlay */
 .recording-overlay{position:fixed;inset:0;background:rgba(30,58,69,.55);z-index:60;
   display:flex;align-items:center;justify-content:center;}

@@ -5,7 +5,7 @@ export const WORD_LONG_PRESS_MS = 650;
 /** Auto-stop recording after this many ms (~12s). */
 export const MAX_RECORDING_MS = 12000;
 
-export const WORD_PRESS_IGNORE = ".mic,.drag-handle,.pin-home,.bring-top";
+export const WORD_PRESS_IGNORE = ".mic,.drag-handle,.pin-home,.bring-top,.send-bottom";
 
 /** @type {null | {
  *   t: (k: string) => string,
