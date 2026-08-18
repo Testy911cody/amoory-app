@@ -2,6 +2,10 @@ node_modules/
 dist/
 .env
 .env.local
+# Inject writes live keys into public/src/config.js locally.
+# The tracked file must stay placeholders (YOUR_SUPABASE_URL / your_anon_key_here).
+# After `npm run build` or `npm run dev`, restore before commit:
+#   git checkout -- public/src/config.js
 .DS_Store
 Thumbs.db
 *.log

@@ -20,7 +20,7 @@ cp .env.example .env.local
 npm run dev                  # http://localhost:3000
 ```
 
-`npm run dev` injects `public/src/config.js` from `.env.local` then serves `public/`.
+Committed `public/src/config.js` is placeholders only (`YOUR_SUPABASE_URL` / `your_anon_key_here`). Copy `.env.example` to `.env.local`, then `npm run dev` or `npm run build` injects real keys from `.env.local` (gitignored). Do not commit the injected file.
 
 ## Build
 
