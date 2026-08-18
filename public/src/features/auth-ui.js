@@ -3,8 +3,50 @@
 /** @type {null | Record<string, Function>} */
 let ctx = null;
 
+const RECENT_ACCOUNTS_KEY = "talkboard_recent_accounts";
+const MAX_RECENT_ACCOUNTS = 8;
+
 export function initAuthUi(deps) {
   ctx = deps;
+}
+
+function normalizeStoredUsername(raw) {
+  return String(raw || "").trim().toLowerCase().replace(/^@/, "");
+}
+
+export function loadRecentAccounts() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(RECENT_ACCOUNTS_KEY) || "[]");
+    if (!Array.isArray(raw)) return [];
+    const seen = new Set();
+    const out = [];
+    for (const item of raw) {
+      const name = normalizeStoredUsername(item);
+      if (!/^[a-z0-9_]{3,}$/.test(name) || seen.has(name)) continue;
+      seen.add(name);
+      out.push(name);
+      if (out.length >= MAX_RECENT_ACCOUNTS) break;
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+export function rememberRecentAccount(username) {
+  const name = normalizeStoredUsername(username);
+  if (!/^[a-z0-9_]{3,}$/.test(name)) return;
+  const next = [name, ...loadRecentAccounts().filter(u => u !== name)].slice(0, MAX_RECENT_ACCOUNTS);
+  try {
+    localStorage.setItem(RECENT_ACCOUNTS_KEY, JSON.stringify(next));
+  } catch { /* quota / private mode */ }
+}
+
+function currentStoredUsername() {
+  const user = ctx?.getAuthUser?.();
+  if (!user) return null;
+  const name = normalizeStoredUsername(ctx.displayUsername(user));
+  return name || null;
 }
 
 export function showAuthError(errorEl, msg) {
@@ -88,6 +130,7 @@ export function setupRecordAuth() {
       return;
     }
     ctx.markManualAuthSession();
+    rememberRecentAccount(ctx.displayUsername(ctx.getAuthUser()));
     signedInEl.textContent = `${ctx.t("signedInAs")} ${ctx.displayUsername(ctx.getAuthUser())}`;
     signedInEl.hidden = false;
     if (formEl) formEl.hidden = true;
@@ -179,6 +222,7 @@ export function setupCaregiverAuth() {
 
   async function reflect(user) {
     ctx.setAuthUser(user || null);
+    if (user) rememberRecentAccount(ctx.displayUsername(user));
     ctx.renderAccountBadge(ctx.getAuthUser());
     ctx.updateCaregiverChrome();
     showAuthError(errorEl, "");
@@ -233,6 +277,7 @@ export function setupCaregiverAuth() {
     setAuthLoading(signUpBtn, false, ctx.t("accountSignUp"));
     if (res.ok && res.user && !res.needsConfirm) {
       ctx.markManualAuthSession();
+      rememberRecentAccount(ctx.displayUsername(res.user));
       ctx.toast(mode === "signup"
         ? ctx.t("signUpSuccess")
         : `${ctx.t("signedInAs")} ${ctx.displayUsername(res.user)}`);
@@ -263,3 +308,244 @@ export function setupCaregiverAuth() {
   ctx.getCurrentUser().then(reflect).catch(() => reflect(null));
   ctx.onAuthChange(user => reflect(user));
 }
+
+export function setupAccountSwitcher() {
+  const badge = document.getElementById("accountBadge");
+  const menu = document.getElementById("accountSwitcher");
+  const wrap = document.getElementById("accountSwitcherWrap");
+  if (!badge || !menu || !wrap) return;
+
+  let pinFor = null;
+  let signingIn = false;
+
+  function isOpen() {
+    return !menu.hidden;
+  }
+
+  function closeSwitcher() {
+    menu.hidden = true;
+    menu.innerHTML = "";
+    pinFor = null;
+    signingIn = false;
+    badge.setAttribute("aria-expanded", "false");
+  }
+
+  function formatName(username) {
+    return `@${username}`;
+  }
+
+  function renderMenu() {
+    const current = currentStoredUsername();
+    const recent = loadRecentAccounts().filter(u => u !== current);
+    menu.innerHTML = "";
+
+    const title = document.createElement("div");
+    title.className = "account-switcher-title";
+    title.id = "accountSwitcherTitle";
+    title.textContent = ctx.t("switchAccount");
+    menu.appendChild(title);
+    menu.setAttribute("aria-labelledby", "accountSwitcherTitle");
+
+    const list = document.createElement("div");
+    list.className = "account-switcher-list";
+    list.setAttribute("role", "none");
+
+    function addItem({ id, label, current = false, guest = false, onClick }) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "account-switcher-item";
+      btn.setAttribute("role", "option");
+      btn.setAttribute("aria-selected", current ? "true" : "false");
+      btn.dataset.account = id;
+      if (current) btn.classList.add("is-current");
+      if (guest) btn.classList.add("is-guest");
+      btn.textContent = label;
+      btn.addEventListener("click", onClick);
+      list.appendChild(btn);
+    }
+
+    if (current) {
+      addItem({
+        id: current,
+        label: formatName(current),
+        current: true,
+        onClick: () => closeSwitcher()
+      });
+    }
+
+    for (const name of recent) {
+      addItem({
+        id: name,
+        label: formatName(name),
+        onClick: () => showPinFor(name)
+      });
+    }
+
+    addItem({
+      id: "guest",
+      label: ctx.t("guestAccount"),
+      current: !current,
+      guest: true,
+      onClick: () => {
+        if (!current) {
+          closeSwitcher();
+          return;
+        }
+        switchToGuest();
+      }
+    });
+
+    addItem({
+      id: "add",
+      label: ctx.t("switchAddAccount"),
+      onClick: () => {
+        closeSwitcher();
+        ctx.openAccountSettings?.();
+      }
+    });
+
+    menu.appendChild(list);
+
+    if (pinFor) {
+      const pinBox = document.createElement("div");
+      pinBox.className = "account-switcher-pin";
+      const lbl = document.createElement("label");
+      lbl.className = "account-switcher-pin-lbl";
+      lbl.setAttribute("for", "accountSwitcherPinInput");
+      lbl.textContent = ctx.t("switchAccountPin").replace("{name}", formatName(pinFor));
+      const row = document.createElement("div");
+      row.className = "account-switcher-pin-row";
+      const input = document.createElement("input");
+      input.id = "accountSwitcherPinInput";
+      input.type = "password";
+      input.inputMode = "numeric";
+      input.maxLength = 4;
+      input.autocomplete = "off";
+      input.pattern = "[0-9]*";
+      input.placeholder = "••••";
+      input.setAttribute("aria-label", lbl.textContent);
+      const submit = document.createElement("button");
+      submit.type = "button";
+      submit.className = "btn-primary";
+      submit.textContent = ctx.t("accountSignIn");
+      submit.addEventListener("click", () => trySwitchTo(pinFor, input.value));
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          trySwitchTo(pinFor, input.value);
+        }
+      });
+      input.addEventListener("input", () => {
+        const digits = input.value.replace(/\D/g, "").slice(0, 4);
+        if (input.value !== digits) input.value = digits;
+        if (digits.length === 4) trySwitchTo(pinFor, digits);
+      });
+      row.append(input, submit);
+      pinBox.append(lbl, row);
+      const err = document.createElement("p");
+      err.className = "account-switcher-error";
+      err.id = "accountSwitcherError";
+      err.hidden = true;
+      err.setAttribute("role", "alert");
+      pinBox.appendChild(err);
+      menu.appendChild(pinBox);
+      requestAnimationFrame(() => input.focus());
+    }
+  }
+
+  function showPinFor(username) {
+    pinFor = username;
+    renderMenu();
+  }
+
+  function setSwitcherError(msg) {
+    const err = document.getElementById("accountSwitcherError");
+    if (!err) return;
+    if (msg) {
+      err.textContent = msg;
+      err.hidden = false;
+    } else {
+      err.textContent = "";
+      err.hidden = true;
+    }
+  }
+
+  async function trySwitchTo(username, pin) {
+    if (signingIn) return;
+    const pinCheck = ctx.validatePin(pin);
+    if (!pinCheck.ok) {
+      setSwitcherError(ctx.t("passwordTooShort"));
+      return;
+    }
+    signingIn = true;
+    setSwitcherError("");
+    const submit = menu.querySelector(".account-switcher-pin .btn-primary");
+    const input = document.getElementById("accountSwitcherPinInput");
+    if (submit) {
+      submit.disabled = true;
+      submit.textContent = ctx.t("switchingAccount");
+    }
+    if (input) input.disabled = true;
+    const res = await ctx.signInWithPassword(username, pinCheck.pin);
+    if (!res.ok || !res.user || res.needsConfirm) {
+      signingIn = false;
+      if (submit) {
+        submit.disabled = false;
+        submit.textContent = ctx.t("accountSignIn");
+      }
+      if (input) {
+        input.disabled = false;
+        input.value = "";
+        input.focus();
+      }
+      setSwitcherError(res.error || ctx.t("wrongCredentials"));
+      return;
+    }
+    ctx.markManualAuthSession();
+    rememberRecentAccount(username);
+    ctx.setAuthUser(res.user);
+    ctx.renderAccountBadge(res.user);
+    ctx.toast(`${ctx.t("signedInAs")} ${ctx.displayUsername(res.user)}`);
+    closeSwitcher();
+  }
+
+  async function switchToGuest() {
+    if (signingIn) return;
+    signingIn = true;
+    await ctx.signOut();
+    ctx.setAuthUser(null);
+    ctx.renderAccountBadge(null);
+    ctx.updateCaregiverChrome?.();
+    ctx.toast(ctx.t("switchedToGuest"));
+    closeSwitcher();
+  }
+
+  function openSwitcher() {
+    pinFor = null;
+    menu.hidden = false;
+    badge.setAttribute("aria-expanded", "true");
+    renderMenu();
+  }
+
+  badge.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (isOpen()) closeSwitcher();
+    else openSwitcher();
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!isOpen()) return;
+    if (wrap.contains(e.target)) return;
+    closeSwitcher();
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && isOpen()) {
+      e.preventDefault();
+      closeSwitcher();
+      badge.focus();
+    }
+  });
+}
+

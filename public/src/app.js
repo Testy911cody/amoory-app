@@ -48,7 +48,8 @@ import {
   bindRecordingOverlayButtons, persistShareWithCommunity, wordPressIgnored
 } from "./features/recording.js";
 import {
-  initAuthUi, openRecordAuthPanel, setupRecordAuth, setupCaregiverAuth
+  initAuthUi, openRecordAuthPanel, setupRecordAuth, setupCaregiverAuth,
+  setupAccountSwitcher, rememberRecentAccount
 } from "./features/auth-ui.js";
 import { evictAudioCachesIfNeeded } from "./idb-evict.js";
 
@@ -338,7 +339,10 @@ function applyChrome() {
   updateContribFormLabels();
   updateCaregiverChrome();
   const settingsBtn = document.getElementById("settingsBtn");
-  if (settingsBtn) settingsBtn.title = t("settingsHoldHint");
+  if (settingsBtn) {
+    settingsBtn.title = t("settings");
+    settingsBtn.setAttribute("aria-label", t("settings"));
+  }
 }
 
 function updateSettingsPanelLabels() {
@@ -554,10 +558,10 @@ function setupSyncBanner() {
     banner.id = "syncBanner";
     banner.className = "sync-banner";
     banner.hidden = true;
-    banner.innerHTML = `<span id="syncBannerText"></span><button type="button" id="syncBannerDismiss" aria-label="${t("syncingVoicesDismiss")}">×</button>`;
+    banner.innerHTML = `<span id="syncBannerText"></span>`;
     document.querySelector(".topbar-end")?.appendChild(banner)
       || document.querySelector(".topbar")?.appendChild(banner);
-    document.getElementById("syncBannerDismiss")?.addEventListener("click", () => {
+    banner.addEventListener("click", () => {
       syncBannerDismissed = true;
       banner.hidden = true;
     });
@@ -644,6 +648,7 @@ function renderAccountBadge(user = authUser) {
   if (!badge) return;
   if (user) {
     const name = displayUsername(user);
+    rememberRecentAccount(name);
     badge.textContent = name;
     badge.title = `${t("signedInAs")} ${name} — ${t("accountBadgeHint")}`;
     badge.setAttribute("aria-label", badge.title);
@@ -669,15 +674,15 @@ function renderAccountBadge(user = authUser) {
 }
 
 function openAccountSettings() {
+  document.getElementById("accountSwitcher")?.setAttribute("hidden", "");
+  document.getElementById("accountBadge")?.setAttribute("aria-expanded", "false");
   switchSettingsTab("general");
   openPanel(el.settingsPanel);
   document.getElementById("caregiverAuth")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
 function setupAccountBadge() {
-  document.getElementById("accountBadge")?.addEventListener("click", () => {
-    openAccountSettings();
-  });
+  setupAccountSwitcher();
 }
 
 function wordLabelHtml(w) {
@@ -1258,7 +1263,6 @@ function refreshAll() {
 }
 
 /* ---------------- Settings panel ---------------- */
-const SETTINGS_HOLD_MS = 2000;
 const openModals = new Set();
 let modalFocusReturn = null;
 
@@ -1484,6 +1488,8 @@ document.getElementById("boardPresetSelect")?.addEventListener("change", e => {
 
 /* ---------------- Settings panel ---------------- */
 function openSettings() {
+  document.getElementById("accountSwitcher")?.setAttribute("hidden", "");
+  document.getElementById("accountBadge")?.setAttribute("aria-expanded", "false");
   settingsSessionUnlocked = true;
   updateCaregiverChrome();
   renderUsageStats();
@@ -1495,57 +1501,7 @@ function setupSettings() {
   const settingsBtn = document.getElementById("settingsBtn");
   if (!settingsBtn) return;
 
-  let holdTimer = null;
-  let holdFired = false;
-  let holding = false;
-
-  const clearHoldTimer = () => {
-    if (holdTimer) {
-      clearTimeout(holdTimer);
-      holdTimer = null;
-    }
-  };
-
-  const endHold = (e) => {
-    if (!holding) return;
-    holding = false;
-    clearHoldTimer();
-    try { settingsBtn.releasePointerCapture?.(e.pointerId); } catch { /* already released */ }
-  };
-
-  settingsBtn.addEventListener("pointerdown", (e) => {
-    if (e.button > 0) return;
-    holding = true;
-    holdFired = false;
-    clearHoldTimer();
-    try { settingsBtn.setPointerCapture(e.pointerId); } catch { /* unsupported */ }
-    holdTimer = setTimeout(() => {
-      holdTimer = null;
-      holdFired = true;
-      holding = false;
-      navigator.vibrate?.(20);
-      openSettings();
-    }, SETTINGS_HOLD_MS);
-  });
-
-  settingsBtn.addEventListener("pointerup", endHold);
-  settingsBtn.addEventListener("pointercancel", endHold);
-  settingsBtn.addEventListener("lostpointercapture", () => {
-    holding = false;
-    clearHoldTimer();
-  });
-  /* Do not cancel on pointerleave — finger drift cancels 2s holds on mobile.
-     Pointer capture keeps the gesture alive until up/cancel. */
-  settingsBtn.addEventListener("click", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (holdFired) {
-      holdFired = false;
-      return;
-    }
-    toast(t("settingsHoldTip"));
-    navigator.vibrate?.(10);
-  });
+  settingsBtn.addEventListener("click", () => openSettings());
 
   document.getElementById("resetUsageBtn")?.addEventListener("click", () => {
     if (!confirm(t("resetUsageConfirm"))) return;
@@ -1809,7 +1765,8 @@ function wireRecordingAndAuth() {
     renderBoard,
     renderPersonalList: () => renderPersonalList(),
     renderCustomWordsList,
-    openRecordAuthPanel
+    openRecordAuthPanel,
+    openAccountSettings
   });
 }
 

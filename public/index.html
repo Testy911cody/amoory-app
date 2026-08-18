@@ -46,7 +46,10 @@
       <span id="langIndicator" class="lang-chip" aria-live="polite" title="Current speak language"></span>
     </div>
     <div class="topbar-end">
-      <button type="button" id="accountBadge" class="account-badge" aria-live="polite" hidden></button>
+      <div class="account-switcher-wrap" id="accountSwitcherWrap">
+        <button type="button" id="accountBadge" class="account-badge" aria-live="polite" aria-haspopup="listbox" aria-expanded="false" aria-controls="accountSwitcher" hidden></button>
+        <div id="accountSwitcher" class="account-switcher" hidden role="listbox" aria-labelledby="accountBadge"></div>
+      </div>
       <span id="offlineBadge" class="offline-badge" hidden aria-live="polite"></span>
       <div class="topbar-actions">
         <button type="button" class="icon-btn" id="contributeBtn" title="Suggest a word" hidden>➕</button>

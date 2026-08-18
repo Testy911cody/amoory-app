@@ -53,10 +53,7 @@ async function clickKidView(page, pattern) {
 }
 
 async function openSettings(page) {
-  const btn = page.locator("#settingsBtn");
-  await btn.dispatchEvent("pointerdown");
-  await page.waitForTimeout(2100);
-  await btn.dispatchEvent("pointerup");
+  await page.locator("#settingsBtn").click();
   await page.waitForTimeout(300);
 }
 
@@ -117,6 +114,26 @@ async function testEnv({ name, url }) {
       badgeText
     );
 
+    if (badgeVisible) {
+      await badge.click();
+      await page.waitForTimeout(200);
+      const switcherOpen = await page.locator("#accountSwitcher").isVisible();
+      const hasGuestOption = await page.locator('#accountSwitcher [data-account="guest"]').count();
+      record(name, "Account switcher opens from badge", switcherOpen, `${hasGuestOption} guest option`);
+      await page.keyboard.press("Escape");
+      await page.waitForTimeout(150);
+    }
+
+    const topbarHasX = await page.evaluate(() => {
+      const top = document.querySelector(".topbar");
+      if (!top) return false;
+      return [...top.querySelectorAll("button")].some((b) => {
+        const label = `${b.textContent || ""}${b.getAttribute("aria-label") || ""}`;
+        return /^[×✕xX]$/.test((b.textContent || "").trim()) || /dismiss|close/i.test(label);
+      });
+    });
+    record(name, "No X close in topbar", !topbarHasX);
+
     const catCount = await page.locator("#cats .cat").count();
     record(name, "Category/kid tabs", catCount >= 3, `${catCount} tabs`);
 
@@ -157,7 +174,7 @@ async function testEnv({ name, url }) {
     await openSettings(page);
 
     const settingsOpen = await page.locator("#settingsPanel").isVisible();
-    record(name, "Settings opens with 2s hold", settingsOpen);
+    record(name, "Settings opens on click", settingsOpen);
     const pinPanelVisible = await page.locator("#pinPanel").isVisible();
     record(name, "No legacy PIN gate", !pinPanelVisible);
 
