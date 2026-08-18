@@ -43,7 +43,20 @@
     </div>
     <div class="topbar-center">
       <div class="title" id="appTitle">Talk Board</div>
-      <span id="langIndicator" class="lang-chip" aria-live="polite" title="Current speak language"></span>
+      <div class="lang-picker-wrap" id="langPickerWrap">
+        <button type="button" id="langIndicator" class="lang-chip" aria-haspopup="dialog" aria-expanded="false" aria-controls="langPicker" aria-live="polite" title="Change language"></button>
+        <div id="langPicker" class="lang-picker" hidden role="dialog" aria-modal="false" aria-labelledby="langPickerTitle">
+          <p class="lang-picker-title" id="langPickerTitle">Language</p>
+          <label class="lang-picker-field" for="localeSelect">
+            <span id="langPickerLocaleLbl">Language</span>
+            <select id="localeSelect" aria-label="Choose language"></select>
+          </label>
+          <label class="lang-picker-field" for="dialectSelect">
+            <span id="langPickerDialectLbl">Dialect</span>
+            <select id="dialectSelect" aria-label="Choose dialect"></select>
+          </label>
+        </div>
+      </div>
     </div>
     <div class="topbar-end">
       <div class="account-switcher-wrap" id="accountSwitcherWrap">
@@ -51,17 +64,7 @@
         <div id="accountSwitcher" class="account-switcher" hidden role="listbox" aria-labelledby="accountBadge"></div>
       </div>
       <span id="offlineBadge" class="offline-badge" hidden aria-live="polite"></span>
-      <div class="topbar-actions">
-        <button type="button" class="icon-btn" id="contributeBtn" title="Suggest a word" hidden>➕</button>
-      </div>
     </div>
-  </div>
-
-  <div class="localebar" id="localebar">
-    <label for="localeSelect"><span data-i18n="language">Language</span></label>
-    <select id="localeSelect" aria-label="Choose language"></select>
-    <label for="dialectSelect"><span data-i18n="dialect">Dialect</span></label>
-    <select id="dialectSelect" aria-label="Choose dialect"></select>
   </div>
 
   <div class="strip">
@@ -161,6 +164,11 @@
             <select id="settingsDialectSelect" aria-label="Choose dialect"></select>
           </label>
         </div>
+
+        <hr>
+        <h3 id="settingsContributeTitle">Suggest a word</h3>
+        <p class="muted" id="settingsContributeHint">Add a new word to the board. It stays pending until you approve it in settings.</p>
+        <button type="button" class="btn-primary" id="settingsContributeBtn">Suggest a word</button>
 
         <hr>
         <h3 id="wordLearningTitle">Word learning</h3>

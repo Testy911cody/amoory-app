@@ -10,8 +10,9 @@ const swSrc = fs.readFileSync(path.join(__dirname, "..", "public", "sw.js"), "ut
 const EXPECTED_SW = swSrc.match(/CACHE_VERSION = "([^"]+)"/)?.[1] || "talkboard-v31";
 
 const localOnly = process.env.TALKBOARD_TEST_LOCAL_ONLY === "1";
+const localUrl = process.env.TALKBOARD_LOCAL_URL || "http://127.0.0.1:3000/";
 const URLS = [
-  { name: "local", url: "http://127.0.0.1:3000/" },
+  { name: "local", url: localUrl },
   ...(localOnly ? [] : [{ name: "production", url: "https://housegames.club/amoory/" }]),
 ];
 
@@ -137,15 +138,27 @@ async function testEnv({ name, url }) {
     const catCount = await page.locator("#cats .cat").count();
     record(name, "Category/kid tabs", catCount >= 3, `${catCount} tabs`);
 
+    const langChip = page.locator("#langIndicator");
+    const langChipIsButton = await langChip.evaluate((el) => el.tagName === "BUTTON").catch(() => false);
+    record(name, "Language chip is a button", langChipIsButton);
+    await langChip.click();
+    await page.waitForTimeout(200);
+    const pickerOpen = await page.locator("#langPicker").isVisible();
+    record(name, "Language picker opens from chip", pickerOpen);
     const localeOpts = await page.locator("#localeSelect option").count();
     record(name, "Language dropdown populated", localeOpts >= 5, `${localeOpts} languages`);
     const dialectOpts = await page.locator("#dialectSelect option").count();
     record(name, "Dialect dropdown populated", dialectOpts >= 1, `${dialectOpts} dialects`);
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(150);
+    const pickerClosed = !(await page.locator("#langPicker").isVisible());
+    record(name, "Language picker closes on Escape", pickerClosed);
 
+    const contributeInTopbar = await page.locator(".topbar #contributeBtn").count();
+    record(name, "No contribute + in topbar", contributeInTopbar === 0);
     const contributeHiddenBeforeSettings = await page.evaluate(() => {
-      const btn = document.getElementById("contributeBtn");
       const section = document.getElementById("boardContributeSection");
-      return !!(btn?.hasAttribute("hidden") && section?.hasAttribute("hidden"));
+      return !!section?.hasAttribute("hidden");
     });
     record(name, "Contribute hidden until caregiver unlock",
       name === "production" ? true : contributeHiddenBeforeSettings,
@@ -175,6 +188,8 @@ async function testEnv({ name, url }) {
 
     const settingsOpen = await page.locator("#settingsPanel").isVisible();
     record(name, "Settings opens on click", settingsOpen);
+    const settingsContribute = await page.locator("#settingsContributeBtn").count();
+    record(name, "Suggest a word in settings", settingsContribute === 1);
     const pinPanelVisible = await page.locator("#pinPanel").isVisible();
     record(name, "No legacy PIN gate", !pinPanelVisible);
 

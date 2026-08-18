@@ -357,6 +357,9 @@ function updateSettingsPanelLabels() {
     pendingGlobalTitle: "pendingGlobalTitle",
     settingsLangLbl: "language",
     settingsDialectLbl: "dialect",
+    settingsContributeTitle: "contribute",
+    settingsContributeHint: "contributeHint",
+    settingsContributeBtn: "contribute",
     wordLearningTitle: "wordLearning",
     resetUsageBtn: "resetUsage",
     caregiverModeLbl: "caregiverMode",
@@ -437,11 +440,6 @@ function showCaregiverAffordances() {
 
 function updateCaregiverChrome() {
   const show = showCaregiverAffordances();
-  const contributeBtn = document.getElementById("contributeBtn");
-  if (contributeBtn) {
-    if (show) contributeBtn.removeAttribute("hidden");
-    else contributeBtn.setAttribute("hidden", "");
-  }
   const boardContrib = document.getElementById("boardContributeSection");
   if (boardContrib) {
     if (show) boardContrib.removeAttribute("hidden");
@@ -525,8 +523,93 @@ function renderLangIndicator() {
   const d = getDialect(settings.locale, state.dialect);
   const base = loc.nativeName || loc.name;
   const dia = (d && d.nativeName && d.nativeName !== loc.nativeName) ? ` · ${d.nativeName}` : "";
-  ind.textContent = `${base}${dia}`;
-  ind.title = `Speaking words in ${loc.name}${d && d.name ? " / " + d.name : ""}`;
+  const label = `${base}${dia}`;
+  ind.textContent = label;
+  const change = t("changeLanguage");
+  ind.title = change;
+  ind.setAttribute("aria-label", `${change}: ${label}`);
+  const pickerTitle = document.getElementById("langPickerTitle");
+  if (pickerTitle) pickerTitle.textContent = t("language");
+  const locLbl = document.getElementById("langPickerLocaleLbl");
+  if (locLbl) locLbl.textContent = t("language");
+  const diaLbl = document.getElementById("langPickerDialectLbl");
+  if (diaLbl) diaLbl.textContent = t("dialect");
+  if (el.localeSelect) el.localeSelect.setAttribute("aria-label", t("chooseLanguage"));
+  if (el.dialectSelect) el.dialectSelect.setAttribute("aria-label", t("chooseDialect"));
+  const settingsLoc = document.getElementById("settingsLocaleSelect");
+  if (settingsLoc) settingsLoc.setAttribute("aria-label", t("chooseLanguage"));
+  const settingsDia = document.getElementById("settingsDialectSelect");
+  if (settingsDia) settingsDia.setAttribute("aria-label", t("chooseDialect"));
+}
+
+function applyLocale(code) {
+  settings = saveSettings({ locale: code });
+  const loc = getLocale(settings.locale);
+  const firstDialect = loc.dialects[0]?.id || "default";
+  state.dialect = firstDialect;
+  settings = saveSettings({ dialect: firstDialect, voiceURI: null });
+  if (el.localeSelect) el.localeSelect.value = code;
+  refreshCommunityForLocale(settings.locale).then(() => refreshAll()).catch(() => refreshAll());
+}
+
+function applyDialect(id) {
+  state.dialect = id;
+  settings = saveSettings({ dialect: state.dialect, voiceURI: null });
+  if (el.dialectSelect) el.dialectSelect.value = id;
+  renderVoiceSelect();
+  renderBoard();
+  renderLangIndicator();
+  renderSettingsLocaleSelects();
+  loadGlobalRecordings(settings.locale, state.dialect).catch(() => {});
+}
+
+function closeLangPicker() {
+  const picker = document.getElementById("langPicker");
+  const chip = document.getElementById("langIndicator");
+  if (picker) picker.hidden = true;
+  chip?.setAttribute("aria-expanded", "false");
+  document.querySelector(".topbar")?.classList.remove("lang-picker-open");
+}
+
+function setupLangPicker() {
+  const chip = document.getElementById("langIndicator");
+  const picker = document.getElementById("langPicker");
+  const wrap = document.getElementById("langPickerWrap");
+  if (!chip || !picker || !wrap) return;
+
+  function isOpen() {
+    return !picker.hidden;
+  }
+
+  function openPicker() {
+    document.getElementById("accountSwitcher")?.setAttribute("hidden", "");
+    document.getElementById("accountBadge")?.setAttribute("aria-expanded", "false");
+    picker.hidden = false;
+    chip.setAttribute("aria-expanded", "true");
+    wrap.closest(".topbar")?.classList.add("lang-picker-open");
+    requestAnimationFrame(() => el.localeSelect?.focus());
+  }
+
+  chip.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (isOpen()) closeLangPicker();
+    else openPicker();
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!isOpen()) return;
+    if (wrap.contains(e.target)) return;
+    closeLangPicker();
+  }, true);
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && isOpen()) {
+      e.preventDefault();
+      closeLangPicker();
+      chip.focus();
+    }
+  });
 }
 
 function updateOfflineBadge() {
@@ -698,6 +781,7 @@ function wordLabelHtml(w) {
 const chipLabel = w => labelForWord(w, settings.locale, state.dialect);
 
 function renderLocaleSelect() {
+  if (!el.localeSelect) return;
   el.localeSelect.innerHTML = "";
   LOCALES.forEach(loc => {
     const o = document.createElement("option");
@@ -709,6 +793,7 @@ function renderLocaleSelect() {
 }
 
 function renderDialectSelect() {
+  if (!el.dialectSelect) return;
   el.dialectSelect.innerHTML = "";
   const loc = getLocale(settings.locale);
   const dialects = loc.dialects.length
@@ -1411,7 +1496,7 @@ function collapseBoardContribute() {
   section?.classList.remove("is-open");
 }
 
-document.getElementById("contributeBtn")?.addEventListener("click", () => {
+document.getElementById("settingsContributeBtn")?.addEventListener("click", () => {
   expandBoardContribute();
 });
 document.getElementById("boardContributeToggle")?.addEventListener("click", () => {
@@ -1427,21 +1512,11 @@ document.getElementById("boardContributeToggle")?.addEventListener("click", () =
 });
 
 el.localeSelect?.addEventListener("change", e => {
-  settings = saveSettings({ locale: e.target.value });
-  const loc = getLocale(settings.locale);
-  const firstDialect = loc.dialects[0]?.id || "default";
-  state.dialect = firstDialect;
-  settings = saveSettings({ dialect: firstDialect, voiceURI: null });
-  refreshCommunityForLocale(settings.locale).then(() => refreshAll()).catch(() => refreshAll());
+  applyLocale(e.target.value);
 });
 
 el.dialectSelect?.addEventListener("change", e => {
-  state.dialect = e.target.value;
-  settings = saveSettings({ dialect: state.dialect, voiceURI: null });
-  renderVoiceSelect();
-  renderBoard();
-  renderLangIndicator();
-  loadGlobalRecordings(settings.locale, state.dialect).catch(() => {});
+  applyDialect(e.target.value);
 });
 
 el.voiceSelect?.addEventListener("change", e => {
@@ -1488,6 +1563,7 @@ document.getElementById("boardPresetSelect")?.addEventListener("change", e => {
 
 /* ---------------- Settings panel ---------------- */
 function openSettings() {
+  closeLangPicker();
   document.getElementById("accountSwitcher")?.setAttribute("hidden", "");
   document.getElementById("accountBadge")?.setAttribute("aria-expanded", "false");
   settingsSessionUnlocked = true;
@@ -1550,21 +1626,11 @@ function renderSettingsLocaleSelects() {
 }
 
 document.getElementById("settingsLocaleSelect")?.addEventListener("change", e => {
-  settings = saveSettings({ locale: e.target.value });
-  el.localeSelect.value = e.target.value;
-  const loc = getLocale(settings.locale);
-  state.dialect = loc.dialects[0]?.id || "default";
-  settings = saveSettings({ dialect: state.dialect, voiceURI: null });
-  refreshCommunityForLocale(settings.locale).then(() => refreshAll()).catch(() => refreshAll());
+  applyLocale(e.target.value);
 });
 
 document.getElementById("settingsDialectSelect")?.addEventListener("change", e => {
-  state.dialect = e.target.value;
-  settings = saveSettings({ dialect: state.dialect, voiceURI: null });
-  el.dialectSelect.value = state.dialect;
-  renderVoiceSelect();
-  renderBoard();
-  renderLangIndicator();
+  applyDialect(e.target.value);
 });
 
 /* ---------------- Contribute form ---------------- */
@@ -2156,6 +2222,7 @@ function bootUI() {
   setupLayoutExportImport();
   setupCustomWordForm();
   setupSettings();
+  setupLangPicker();
   setupCoach();
   setupInstallPrompt();
   setupMoreSearch();
