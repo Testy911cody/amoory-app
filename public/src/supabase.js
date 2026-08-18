@@ -36,11 +36,18 @@ export function getSupabase() {
   if (!clientPromise) {
     clientPromise = import(
       "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/+esm"
-    ).then(({ createClient }) =>
-      createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-        auth: { persistSession: true, autoRefreshToken: true }
-      })
-    );
+    )
+      .then(({ createClient }) =>
+        createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+          auth: { persistSession: true, autoRefreshToken: true }
+        })
+      )
+      .catch((err) => {
+        clientPromise = null;
+        throw new Error(
+          friendlyAuthError(err?.message || "Failed to load account library.")
+        );
+      });
   }
   return clientPromise;
 }
@@ -126,6 +133,12 @@ export function usesTalkboardAccount(user) {
 
 function friendlyAuthError(message) {
   const m = (message || "").toLowerCase();
+  if (m.includes("failed to fetch") || m.includes("networkerror") || m.includes("load failed")) {
+    return "Could not reach the account server. Check your connection and try again.";
+  }
+  if (m.includes("database error saving new user") || m.includes("unexpected_failure")) {
+    return "Could not create the account (server error). Please try again in a few minutes.";
+  }
   if (m.includes("invalid login credentials")) return "Wrong username or PIN.";
   if (m.includes("user already registered")) return "That username is already taken.";
   if (m.includes("email not confirmed")) {
@@ -140,6 +153,17 @@ function friendlyAuthError(message) {
   if (m.includes("rate limit")) return "Too many attempts — wait a minute and try again.";
   if (m.includes("signup is disabled")) return "Account sign-up is disabled on the server.";
   return message || "Something went wrong.";
+}
+
+async function withAuthGuard(fn) {
+  try {
+    if (!isOnline()) {
+      return { ok: false, error: "You appear to be offline. Connect to the internet and try again." };
+    }
+    return await fn();
+  } catch (err) {
+    return { ok: false, error: friendlyAuthError(err?.message || String(err)) };
+  }
 }
 
 /** Resolve an active session user after sign-up or sign-in. */
@@ -164,57 +188,61 @@ export async function signInWithEmail(email) {
 
 /** Username + 4-digit PIN sign-in for caregiver accounts. */
 export async function signInWithPassword(username, pin) {
-  const supabase = await getSupabase();
-  if (!supabase) return { ok: false, error: "Account sign-in is not configured." };
-  const userCheck = validateUsername(username);
-  if (!userCheck.ok) return userCheck;
-  const pinCheck = validatePin(pin);
-  if (!pinCheck.ok) return pinCheck;
-  const password = pinToPassword(pinCheck.pin);
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email: usernameToEmail(userCheck.username),
-    password
+  return withAuthGuard(async () => {
+    const supabase = await getSupabase();
+    if (!supabase) return { ok: false, error: "Account sign-in is not configured." };
+    const userCheck = validateUsername(username);
+    if (!userCheck.ok) return userCheck;
+    const pinCheck = validatePin(pin);
+    if (!pinCheck.ok) return pinCheck;
+    const password = pinToPassword(pinCheck.pin);
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: usernameToEmail(userCheck.username),
+      password
+    });
+    if (error) return { ok: false, error: friendlyAuthError(error.message) };
+    const user = await resolveSessionUser(supabase, data.user);
+    if (!user) return { ok: false, error: "Sign-in succeeded but no session — try again." };
+    return { ok: true, user };
   });
-  if (error) return { ok: false, error: friendlyAuthError(error.message) };
-  const user = await resolveSessionUser(supabase, data.user);
-  if (!user) return { ok: false, error: "Sign-in succeeded but no session — try again." };
-  return { ok: true, user };
 }
 
 /** Username + 4-digit PIN sign-up for caregiver accounts. */
 export async function signUpWithPassword(username, pin) {
-  const supabase = await getSupabase();
-  if (!supabase) return { ok: false, error: "Account sign-up is not configured." };
-  const userCheck = validateUsername(username);
-  if (!userCheck.ok) return userCheck;
-  const pinCheck = validatePin(pin);
-  if (!pinCheck.ok) return pinCheck;
-  const password = pinToPassword(pinCheck.pin);
-  const email = usernameToEmail(userCheck.username);
-  const { data, error } = await supabase.auth.signUp({
-    email,
-    password,
-    options: { data: { username: userCheck.username } }
-  });
-  if (error) return { ok: false, error: friendlyAuthError(error.message) };
+  return withAuthGuard(async () => {
+    const supabase = await getSupabase();
+    if (!supabase) return { ok: false, error: "Account sign-up is not configured." };
+    const userCheck = validateUsername(username);
+    if (!userCheck.ok) return userCheck;
+    const pinCheck = validatePin(pin);
+    if (!pinCheck.ok) return pinCheck;
+    const password = pinToPassword(pinCheck.pin);
+    const email = usernameToEmail(userCheck.username);
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { data: { username: userCheck.username, display_name: userCheck.username } }
+    });
+    if (error) return { ok: false, error: friendlyAuthError(error.message) };
 
-  let user = data.session?.user || data.user || null;
-  if (!data.session) {
-    const signIn = await supabase.auth.signInWithPassword({ email, password });
-    if (!signIn.error) {
-      user = await resolveSessionUser(supabase, signIn.data?.user);
+    let user = data.session?.user || data.user || null;
+    if (!data.session) {
+      const signIn = await supabase.auth.signInWithPassword({ email, password });
+      if (!signIn.error) {
+        user = await resolveSessionUser(supabase, signIn.data?.user);
+      }
+    } else {
+      user = await resolveSessionUser(supabase, user);
     }
-  } else {
-    user = await resolveSessionUser(supabase, user);
-  }
 
-  if (user) return { ok: true, user, needsConfirm: false };
-  return {
-    ok: true,
-    user: data.user,
-    needsConfirm: true,
-    error: null
-  };
+    if (user) return { ok: true, user, needsConfirm: false };
+    return {
+      ok: true,
+      user: data.user,
+      needsConfirm: true,
+      error: null
+    };
+  });
 }
 
 export async function signOut() {
