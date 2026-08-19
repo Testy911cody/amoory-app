@@ -83,8 +83,6 @@ export function openRecordAuthPanel({ forCommunity = false } = {}) {
     return;
   }
   ctx.closePanel(ctx.getSettingsPanel());
-  const contribute = ctx.getContributePanel?.();
-  if (contribute) ctx.closePanel(contribute);
   resetRecordAuthPanel();
   document.getElementById("recordAuthHint").textContent = forCommunity
     ? ctx.t("signInForCommunity")

@@ -68,12 +68,16 @@ function toast(msg) {
   clearTimeout(t._h); t._h = setTimeout(() => { t.style.opacity = "0"; }, 5000);
 }
 
+function hapticTap() {
+  try { navigator.vibrate?.(15); } catch { /* unsupported */ }
+}
+
 const COACH_KEY = "talkboard_coach_done";
 const VISITS_KEY = "talkboard_visits";
 const PINS_PROMPT_KEY = "talkboard_pins_prompted";
 const SW_VERSION_KEY = "talkboard_sw_version";
 let settingsSessionUnlocked = false;
-let moreSearchQuery = "";
+let boardSearchQuery = "";
 let deferredInstallPrompt = null;
 
 function t(key) {
@@ -102,7 +106,9 @@ function stopAllAudio() {
     currentAudio = null;
   }
   document.getElementById("speakBtn")?.classList.remove("loading-audio", "speaking");
-  document.querySelectorAll("#strip .chip.speaking").forEach(c => c.classList.remove("speaking"));
+  document.querySelectorAll("#strip .chip.speaking, #strip .chip.spoken").forEach(c => {
+    c.classList.remove("speaking", "spoken");
+  });
   speakingSentence = false;
 }
 
@@ -264,22 +270,45 @@ async function speakSentence() {
     return;
   }
   const btn = document.getElementById("speakBtn");
+  const strip = document.getElementById("strip");
   const gen = ++speakGeneration;
   speakingSentence = true;
   btn?.classList.add("loading-audio", "speaking");
-  const chips = [...document.querySelectorAll("#strip .chip")];
+  if (strip) strip.setAttribute("aria-label", t("speakingNow"));
+
+  const highlightChip = (index) => {
+    const chips = [...document.querySelectorAll("#strip .chip")];
+    chips.forEach((c, j) => {
+      c.classList.toggle("speaking", j === index);
+      c.classList.toggle("spoken", j < index);
+    });
+    chips[index]?.scrollIntoView({ inline: "nearest", block: "nearest", behavior: "smooth" });
+  };
+
+  let finished = false;
   try {
     for (let i = 0; i < state.sentence.length; i++) {
       if (gen !== speakGeneration) break;
-      chips[i]?.classList.add("speaking");
+      highlightChip(i);
       await playWordAudio(state.sentence[i]);
-      chips[i]?.classList.remove("speaking");
     }
+    finished = gen === speakGeneration;
   } finally {
     if (gen === speakGeneration) {
       speakingSentence = false;
       btn?.classList.remove("loading-audio", "speaking");
-      chips.forEach(c => c.classList.remove("speaking"));
+      document.querySelectorAll("#strip .chip").forEach(c => c.classList.remove("speaking", "spoken"));
+      if (finished) {
+        hapticTap();
+        if (settings.autoClearAfterSay) {
+          state.sentence = [];
+          renderStrip();
+        } else {
+          updateCaregiverChrome();
+        }
+      } else {
+        updateCaregiverChrome();
+      }
     }
   }
 }
@@ -366,6 +395,7 @@ function updateSettingsPanelLabels() {
     showAllOnHomeLbl: "showAllOnHome",
     boardPresetLbl: "boardPreset",
     darkModeLbl: "darkMode",
+    autoClearAfterSayLbl: "autoClearAfterSay",
     badgeLegendTitle: "badgeLegendTitle",
     badgeLegendBody: "badgeLegendBody",
     exportLayoutBtn: "exportLayout",
@@ -384,7 +414,9 @@ function updateSettingsPanelLabels() {
     customWordSubmitBtn: "addMyWord",
     adminPanelLink: "adminPanel",
     privacyPolicyLink: "privacyPolicy",
-    moreSearchLbl: "moreSearchPlaceholder"
+    moreSearchLbl: "moreSearchPlaceholder",
+    boardSearchLbl: "searchBoard",
+    swUpdateBtn: "swUpdatedTap"
   };
   for (const [id, key] of Object.entries(map)) {
     const node = document.getElementById(id);
@@ -392,7 +424,8 @@ function updateSettingsPanelLabels() {
   }
   const hints = {
     caregiverModeHint: "caregiverModeHint",
-    showAllOnHomeHint: "showAllOnHomeHint"
+    showAllOnHomeHint: "showAllOnHomeHint",
+    autoClearAfterSayHint: "autoClearAfterSayHint"
   };
   for (const [id, key] of Object.entries(hints)) {
     const node = document.getElementById(id);
@@ -404,6 +437,15 @@ function updateSettingsPanelLabels() {
   if (customHint) customHint.placeholder = t("englishHintPlaceholder");
   const moreSearch = document.getElementById("moreSearch");
   if (moreSearch) moreSearch.placeholder = t("moreSearchPlaceholder");
+  const boardSearch = document.getElementById("boardSearch");
+  if (boardSearch) boardSearch.placeholder = t("moreSearchPlaceholder");
+  const searchBtn = document.getElementById("boardSearchBtn");
+  if (searchBtn) {
+    searchBtn.title = t("searchBoard");
+    searchBtn.setAttribute("aria-label", t("searchBoard"));
+  }
+  const searchClear = document.getElementById("boardSearchClear");
+  if (searchClear) searchClear.setAttribute("aria-label", t("searchClear"));
   renderBoardPresetSelect();
   const caregiverToggle = document.getElementById("caregiverModeToggle");
   if (caregiverToggle) caregiverToggle.checked = !!settings.caregiverMode;
@@ -411,26 +453,30 @@ function updateSettingsPanelLabels() {
   if (showAllToggle) showAllToggle.checked = !!settings.showAllOnHome;
   const darkToggle = document.getElementById("darkModeToggle");
   if (darkToggle) darkToggle.checked = !!settings.darkMode;
+  const autoClearToggle = document.getElementById("autoClearAfterSayToggle");
+  if (autoClearToggle) autoClearToggle.checked = !!settings.autoClearAfterSay;
 }
 
 function updateBoardSection() {
   const section = document.getElementById("boardSection");
   if (!section) return;
+  const searchWrap = document.getElementById("moreSearchWrap");
+  const legend = document.getElementById("moreBadgeLegend");
   if (state.kidView === "more") {
     section.hidden = false;
     const title = document.getElementById("boardSectionTitle");
     const hint = document.getElementById("boardSectionHint");
-    const searchWrap = document.getElementById("moreSearchWrap");
     if (title) title.textContent = t("viewMore");
     if (hint) hint.textContent = t("moreWordsHint");
     if (searchWrap) searchWrap.hidden = false;
+    if (legend) {
+      legend.hidden = false;
+      legend.textContent = t("moreBadgeLegend");
+    }
   } else {
     section.hidden = true;
-    const searchWrap = document.getElementById("moreSearchWrap");
     if (searchWrap) searchWrap.hidden = true;
-    moreSearchQuery = "";
-    const searchInput = document.getElementById("moreSearch");
-    if (searchInput) searchInput.value = "";
+    if (legend) legend.hidden = true;
   }
 }
 
@@ -584,6 +630,7 @@ function setupLangPicker() {
   function openPicker() {
     document.getElementById("accountSwitcher")?.setAttribute("hidden", "");
     document.getElementById("accountBadge")?.setAttribute("aria-expanded", "false");
+    setBoardSearchOpen(false);
     picker.hidden = false;
     chip.setAttribute("aria-expanded", "true");
     wrap.closest(".topbar")?.classList.add("lang-picker-open");
@@ -872,8 +919,8 @@ function wordsForBoard() {
     state.dialect,
     { homeMax: getHomeMax() }
   );
-  if (state.kidView === "more" && moreSearchQuery.trim()) {
-    const q = moreSearchQuery.trim().toLowerCase();
+  if (boardSearchQuery.trim()) {
+    const q = boardSearchQuery.trim().toLowerCase();
     list = list.filter(w => {
       const primary = labelForWord(w, settings.locale, state.dialect).toLowerCase();
       const secondary = settings.bilingual && settings.secondaryLocale
@@ -1101,6 +1148,7 @@ function renderBoard() {
       recordWordUse(w.id);
       maybePromptRecommendedPins();
       await speakWord(w, card);
+      hapticTap();
       state.sentence.push(w);
       renderStrip();
       if (!isHomeView) {
@@ -1179,11 +1227,16 @@ function renderBoard() {
     setupBoardDragDrop(el.board, viewKey);
   }
 
-  if (!list.length && state.kidView === "more") {
+  if (!list.length) {
     const msg = document.createElement("p");
     msg.className = "empty-more muted";
-    msg.textContent = moreSearchQuery.trim() ? t("moreSearchEmpty") : t("noTierMore");
-    el.board.appendChild(msg);
+    if (boardSearchQuery.trim()) {
+      msg.textContent = t("moreSearchEmpty");
+      el.board.appendChild(msg);
+    } else if (state.kidView === "more") {
+      msg.textContent = t("noTierMore");
+      el.board.appendChild(msg);
+    }
   }
   setupRecordingPrefetch();
 }
@@ -1578,6 +1631,7 @@ document.getElementById("boardPresetSelect")?.addEventListener("change", e => {
 /* ---------------- Settings panel ---------------- */
 function openSettings() {
   closeLangPicker();
+  setBoardSearchOpen(false);
   document.getElementById("accountSwitcher")?.setAttribute("hidden", "");
   document.getElementById("accountBadge")?.setAttribute("aria-expanded", "false");
   settingsSessionUnlocked = true;
@@ -1660,7 +1714,6 @@ function populateCategorySelect(sel) {
 }
 
 function populateContribCategories() {
-  populateCategorySelect(document.getElementById("contribCategory"));
   populateCategorySelect(document.getElementById("boardContribCategory"));
 }
 
@@ -1673,7 +1726,7 @@ function resetContribRecordBtn(btn) {
 function setupContribForm(prefix, { onSuccess } = {}) {
   const form = document.getElementById(`${prefix}Form`);
   const recordBtn = document.getElementById(`${prefix}RecordBtn`);
-  const shareCheckboxId = prefix === "contrib" ? "contribShareOnline" : "boardContribShareOnline";
+  const shareCheckboxId = "boardContribShareOnline";
   if (!form) return;
 
   let rec = null;
@@ -1806,7 +1859,6 @@ function wireRecordingAndAuth() {
     closePanel,
     getSettings: () => settings,
     getSettingsPanel: () => el.settingsPanel,
-    getContributePanel: () => null,
     persistShareWithCommunity,
     getCurrentUser,
     setAuthUser: (u) => { authUser = u; },
@@ -1854,6 +1906,9 @@ function setupDarkModeToggle() {
   document.getElementById("darkModeToggle")?.addEventListener("change", (e) => {
     settings = saveSettings({ darkMode: !!e.target.checked });
     applyTheme();
+  });
+  document.getElementById("autoClearAfterSayToggle")?.addEventListener("change", (e) => {
+    settings = saveSettings({ autoClearAfterSay: !!e.target.checked });
   });
 }
 
@@ -1938,7 +1993,10 @@ function renderCustomWordsList() {
     (w.dialect === state.dialect || !w.dialect)
   );
   list.innerHTML = "";
-  if (!words.length) return;
+  if (!words.length) {
+    list.innerHTML = `<p class="muted">${t("noCustomWords")}</p>`;
+    return;
+  }
   words.forEach(w => {
     const row = document.createElement("div");
     row.className = "pending-row";
@@ -2196,15 +2254,78 @@ function setupInstallPrompt() {
   });
 }
 
-function setupMoreSearch() {
-  document.getElementById("moreSearch")?.addEventListener("input", (e) => {
-    moreSearchQuery = e.target.value;
-    renderBoard();
+function setBoardSearchOpen(open) {
+  const bar = document.getElementById("boardSearchBar");
+  const btn = document.getElementById("boardSearchBtn");
+  if (!bar || !btn) return;
+  bar.hidden = !open;
+  btn.setAttribute("aria-expanded", open ? "true" : "false");
+  if (open) document.getElementById("boardSearch")?.focus();
+}
+
+function syncBoardSearchInputs(value) {
+  boardSearchQuery = value;
+  const more = document.getElementById("moreSearch");
+  const barInput = document.getElementById("boardSearch");
+  if (more && more.value !== value) more.value = value;
+  if (barInput && barInput.value !== value) barInput.value = value;
+  document.getElementById("boardSearchBtn")?.classList.toggle("has-query", !!value.trim());
+  renderBoard();
+}
+
+function setupBoardSearch() {
+  const btn = document.getElementById("boardSearchBtn");
+  const bar = document.getElementById("boardSearchBar");
+  const input = document.getElementById("boardSearch");
+  const clearBtn = document.getElementById("boardSearchClear");
+  const more = document.getElementById("moreSearch");
+
+  btn?.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    closeLangPicker();
+    document.getElementById("accountSwitcher")?.setAttribute("hidden", "");
+    document.getElementById("accountBadge")?.setAttribute("aria-expanded", "false");
+    setBoardSearchOpen(bar?.hidden);
   });
+  input?.addEventListener("input", (e) => syncBoardSearchInputs(e.target.value));
+  more?.addEventListener("input", (e) => {
+    syncBoardSearchInputs(e.target.value);
+    if (e.target.value.trim()) setBoardSearchOpen(true);
+  });
+  clearBtn?.addEventListener("click", () => {
+    syncBoardSearchInputs("");
+    input?.focus();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && bar && !bar.hidden) {
+      e.preventDefault();
+      setBoardSearchOpen(false);
+      btn?.focus();
+    }
+  });
+}
+
+function showSwUpdateBanner() {
+  const banner = document.getElementById("swUpdateBanner");
+  const btn = document.getElementById("swUpdateBtn");
+  if (!banner || !btn) {
+    toast(t("swUpdatedTap"));
+    return;
+  }
+  btn.textContent = t("swUpdatedTap");
+  banner.hidden = false;
 }
 
 async function checkServiceWorkerUpdate() {
   if (!("serviceWorker" in navigator)) return;
+  document.getElementById("swUpdateBtn")?.addEventListener("click", () => {
+    location.reload();
+  });
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (hadController) showSwUpdateBanner();
+  });
   try {
     const res = await fetch("./sw.js", { cache: "no-store" });
     if (!res.ok) return;
@@ -2212,13 +2333,12 @@ async function checkServiceWorkerUpdate() {
     const match = text.match(/CACHE_VERSION = "([^"]+)"/);
     const version = match?.[1];
     if (!version) return;
+    const verEl = document.getElementById("appVersion");
+    if (verEl) verEl.textContent = version.replace(/^talkboard-/, "");
     const prev = localStorage.getItem(SW_VERSION_KEY);
-    if (prev && prev !== version) toast(t("swUpdated"));
+    if (prev && prev !== version) showSwUpdateBanner();
     localStorage.setItem(SW_VERSION_KEY, version);
   } catch { /* offline */ }
-  navigator.serviceWorker.addEventListener("controllerchange", () => {
-    toast(t("swUpdated"));
-  });
 }
 
 function bootUI() {
@@ -2239,7 +2359,7 @@ function bootUI() {
   setupLangPicker();
   setupCoach();
   setupInstallPrompt();
-  setupMoreSearch();
+  setupBoardSearch();
   checkServiceWorkerUpdate();
   evictAudioCachesIfNeeded().catch(() => {});
   refreshAll();

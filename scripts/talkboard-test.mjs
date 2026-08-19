@@ -100,6 +100,10 @@ async function testEnv({ name, url }) {
 
     await waitForBoard(page);
     await dismissCoachIfPresent(page);
+    await page.evaluate(() => {
+      const banner = document.getElementById("swUpdateBanner");
+      if (banner) banner.hidden = true;
+    });
     const wordCount = await page.locator("#board .word").count();
     record(name, "Board loads words", wordCount > 0, `${wordCount} cards`);
 
@@ -156,13 +160,30 @@ async function testEnv({ name, url }) {
 
     const contributeInTopbar = await page.locator(".topbar #contributeBtn").count();
     record(name, "No contribute + in topbar", contributeInTopbar === 0);
+    const searchBtnCount = await page.locator("#boardSearchBtn").count();
+    record(name, "Board search button in topbar", searchBtnCount === 1);
+    await page.locator("#boardSearchBtn").click();
+    await page.waitForTimeout(200);
+    const searchBarOpen = await page.locator("#boardSearchBar").isVisible();
+    record(name, "Board search bar opens", searchBarOpen);
+    if (searchBarOpen) {
+      await page.locator("#boardSearch").fill("zzzznonexistentword");
+      await page.waitForTimeout(300);
+      const noMatch = await page.locator("#board .empty-more").count();
+      record(name, "Search no-matches empty state", noMatch > 0);
+      await page.locator("#boardSearchClear").click();
+      await page.waitForTimeout(200);
+      const afterClear = await page.locator("#board .word").count();
+      record(name, "Search clear restores cards", afterClear > 0, `${afterClear} cards`);
+      await page.keyboard.press("Escape");
+      await page.waitForTimeout(150);
+    }
+
     const contributeHiddenBeforeSettings = await page.evaluate(() => {
       const section = document.getElementById("boardContributeSection");
       return !!section?.hasAttribute("hidden");
     });
-    record(name, "Contribute hidden until caregiver unlock",
-      name === "production" ? true : contributeHiddenBeforeSettings,
-      name === "production" ? "pending deploy" : String(contributeHiddenBeforeSettings));
+    record(name, "Contribute hidden until caregiver unlock", contributeHiddenBeforeSettings);
 
     const moreSwitched = await clickKidView(page, "More words|كلمات أكثر");
     record(name, "More words tab switch", moreSwitched);
@@ -171,7 +192,9 @@ async function testEnv({ name, url }) {
       const sectionVisible = await page.locator("#boardSection").isVisible();
       record(name, "More words section header", sectionVisible);
       const searchVisible = await page.locator("#moreSearch").isVisible();
-      record(name, "More words search input", name === "local" ? searchVisible : true, name === "production" ? "pending deploy" : "");
+      record(name, "More words search input", searchVisible);
+      const moreLegend = await page.locator("#moreBadgeLegend").isVisible();
+      record(name, "More words badge legend", moreLegend);
       const moreWords = await page.locator("#board .word").count();
       record(name, "More words tab renders", moreWords > 0 || await page.locator(".empty-more").count() > 0,
         `${moreWords} words`);
@@ -210,6 +233,12 @@ async function testEnv({ name, url }) {
     const darkToggle = page.locator("#darkModeToggle");
     const darkPresent = await darkToggle.count();
     record(name, "Dark mode toggle in settings", darkPresent === 1);
+    const autoClear = await page.locator("#autoClearAfterSayToggle").count();
+    record(name, "Auto-clear after Say toggle", autoClear === 1);
+    const customEmpty = ((await page.locator("#customWordsList").textContent()) || "").trim();
+    record(name, "Custom words empty state", /No custom words|ما في كلمات خاصة/i.test(customEmpty), customEmpty.slice(0, 80));
+    const swBanner = await page.locator("#swUpdateBanner").count();
+    record(name, "SW update banner element", swBanner === 1);
     if (darkPresent) {
       await darkToggle.check();
       await page.waitForTimeout(200);

@@ -389,7 +389,7 @@ export async function approveOnlineSubmission(id) {
     .maybeSingle();
   if (error) return { ok: false, reason: error.message };
   if (!data) return { ok: false, reason: "not-found" };
-  try { await pullApprovedFromSupabase(); } catch { /* cache refresh optional */ }
+  try { await pullApprovedFromSupabase(data.locale); } catch { /* cache refresh optional */ }
   return { ok: true, row: data };
 }
 

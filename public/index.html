@@ -59,12 +59,21 @@
       </div>
     </div>
     <div class="topbar-end">
+      <button type="button" class="icon-btn board-search-btn" id="boardSearchBtn" aria-expanded="false" aria-controls="boardSearchBar" title="Search" aria-label="Search">🔍</button>
       <div class="account-switcher-wrap" id="accountSwitcherWrap">
         <button type="button" id="accountBadge" class="account-badge" aria-live="polite" aria-haspopup="listbox" aria-expanded="false" aria-controls="accountSwitcher" hidden></button>
         <div id="accountSwitcher" class="account-switcher" hidden role="listbox" aria-labelledby="accountBadge"></div>
       </div>
       <span id="offlineBadge" class="offline-badge" hidden aria-live="polite"></span>
     </div>
+  </div>
+
+  <div class="board-search-bar" id="boardSearchBar" hidden>
+    <label class="board-search-field" for="boardSearch">
+      <span class="sr-only" id="boardSearchLbl">Search words</span>
+      <input type="search" id="boardSearch" class="more-search" autocomplete="off" enterkeyhint="search">
+    </label>
+    <button type="button" class="icon-btn board-search-clear" id="boardSearchClear" aria-label="Clear search">✕</button>
   </div>
 
   <div class="strip">
@@ -82,6 +91,7 @@
       <span class="sr-only" id="moreSearchLbl">Search</span>
       <input type="search" id="moreSearch" class="more-search" autocomplete="off" enterkeyhint="search">
     </label>
+    <p class="muted more-badge-legend" id="moreBadgeLegend" hidden></p>
   </div>
   <div class="board" id="board"></div>
 
@@ -198,6 +208,12 @@
           <span id="darkModeLbl">Dark mode</span>
         </label>
 
+        <label class="field check">
+          <input type="checkbox" id="autoClearAfterSayToggle">
+          <span id="autoClearAfterSayLbl">Clear sentence after Say</span>
+        </label>
+        <p class="muted" id="autoClearAfterSayHint"></p>
+
         <hr>
         <h3 id="badgeLegendTitle">Card badges</h3>
         <p class="muted" id="badgeLegendBody">🎙️ Your recording · 👥 Community word · ⭐ Your custom word.</p>
@@ -302,8 +318,6 @@
     </div>
   </div>
 
-  <!-- Contribute panel removed (v32) — suggest-word lives in boardContributeSection -->
-
   <!-- Auth panel for community contribution after recording -->
   <div class="panel panel-auth" id="recordAuthPanel" role="dialog" aria-modal="true" hidden aria-hidden="true">
     <div class="panel-inner">
@@ -364,7 +378,10 @@
     </div>
   </div>
 
-  <!-- PWA install banner -->
+  <div class="sw-update-banner" id="swUpdateBanner" hidden role="status">
+    <button type="button" class="sw-update-btn" id="swUpdateBtn">New version — tap to refresh</button>
+  </div>
+
   <div class="install-banner" id="installBanner" role="region" aria-labelledby="installBannerText" hidden>
     <div class="install-banner-inner">
       <p id="installBannerText"></p>

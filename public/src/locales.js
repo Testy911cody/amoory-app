@@ -258,6 +258,13 @@ export const UI_STRINGS = {
     resetUsageConfirm: "Reset all word usage stats? Home board order will change.",
     moreSearchPlaceholder: "Search words…",
     moreSearchEmpty: "No words match your search.",
+    searchBoard: "Search this board",
+    searchClear: "Clear search",
+    noCustomWords: "No custom words yet — add one below.",
+    autoClearAfterSay: "Clear sentence after Say",
+    autoClearAfterSayHint: "Removes chips from the strip when the sentence finishes speaking.",
+    swUpdatedTap: "New version — tap to refresh",
+    moreBadgeLegend: "🎙️ recorded · 👥 community · ⭐ your word. Tap ⭐ to pin on Talk.",
     chipRemoveHint: "Tap a chip to remove it",
     speakingNow: "Speaking…",
     installApp: "Install Talk Board",
@@ -441,6 +448,13 @@ export const UI_STRINGS = {
     resetUsageConfirm: "تمسح إحصائيات استخدام كل الكلمات؟ ترتيب لوحة كلام راح يتغيّر.",
     moreSearchPlaceholder: "ابحث عن كلمة…",
     moreSearchEmpty: "ما في كلمات تطابق البحث.",
+    searchBoard: "ابحث في هذه اللوحة",
+    searchClear: "امسح البحث",
+    noCustomWords: "ما في كلمات خاصة للحين — أضف واحدة تحت.",
+    autoClearAfterSay: "امسح الجملة بعد «قول»",
+    autoClearAfterSayHint: "يشيل الشرائح من الشريط لما الجملة تخلص الكلام.",
+    swUpdatedTap: "نسخة جديدة — دوس للتحديث",
+    moreBadgeLegend: "🎙️ تسجيل · 👥 مجتمع · ⭐ كلمتك. دوس ⭐ للتثبيت في كلام.",
     chipRemoveHint: "دوس على الشريحة عشان تشيلها",
     speakingNow: "بيحكي…",
     installApp: "ثبّت لوحة الكلام",
@@ -534,7 +548,8 @@ export function defaultSettings() {
     showAllOnHome: false,
     caregiverMode: false,
     boardPreset: "default",
-    darkMode: false
+    darkMode: false,
+    autoClearAfterSay: false
   };
 }
 
